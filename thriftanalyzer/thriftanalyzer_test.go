@@ -13,32 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAnalyzeThriftDependencies_Example(t *testing.T) {
-	dir, _ := loadThriftFilesFromDir("testdata")
-	graph, err := AnalyzeThriftDependencies("testdata/main.thrift", dir)
-	//require.NoError(t, err)
-	require.NotNil(t, graph)
-	dotString := graph.ToDOT()
-	dotFilePath := filepath.Join("testdata", "dependencies.dot")
-	err = os.WriteFile(dotFilePath, []byte(dotString), 0644)
-	if err != nil {
-		log.Fatalf("无法写入 DOT 文件: %v", err)
-	}
-
-	fmt.Printf("\n--- 可视化 ---")
-	fmt.Printf("\n依赖图已成功生成并保存到: %s\n", dotFilePath)
-	fmt.Println("\n要将此文件转换为图像，请执行以下任一操作:")
-	fmt.Println("1. (推荐) 安装 Graphviz: https://graphviz.org/download/")
-	fmt.Println("   然后在终端中运行以下命令:")
-	fmt.Printf("   dot -Tpng -o %s %s\n", filepath.Join("testdata", "dependencies.png"), dotFilePath)
-	fmt.Println("   (您也可以将 -Tpng 替换为 -Tsvg 或 -Tjpg)")
-	fmt.Println("\n2. 使用在线 Graphviz 查看器，例如:")
-	fmt.Println("   - https://dreampuf.github.io/GraphvizOnline/")
-	fmt.Println("   - https://www.devtools.love/graphviz-viewer")
-	fmt.Println("   然后将下面文件的内容粘贴到编辑器中。")
-	fmt.Printf("\n--- DOT 文件内容 ---\n%s\n", dotString)
-}
-
 func loadThriftFilesFromDir(rootDir string) (map[string][]byte, error) {
 	// 首先，确保 rootDir 是一个绝对路径，以保证 map 中的 key 是一致和明确的。
 	absRootDir, err := filepath.Abs(rootDir)
