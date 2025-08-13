@@ -45,34 +45,37 @@ type AnalysisResult struct {
 	Conflicts NamespaceConflict
 }
 
-// Error 方法使 AnalysisResult 满足 error 接口。
 func (r *AnalysisResult) Error() string {
 	if r.IsEmpty() {
 		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString("Thrift 依赖分析发现问题:\n")
+	sb.WriteString("Thrift dependency analysis found issues:\n")
 
+	// Append details about any cyclic dependencies found.
 	if len(r.Cycles) > 0 {
-		sb.WriteString(fmt.Sprintf(" - 发现 %d 个循环依赖:\n", len(r.Cycles)))
+		sb.WriteString(fmt.Sprintf(" - Found %d cyclic dependenc(ies):\n", len(r.Cycles)))
 		for _, cycle := range r.Cycles {
 			var pathParts []string
+			// Use the base name of the file for a cleaner path representation.
 			for _, p := range cycle {
 				pathParts = append(pathParts, filepath.Base(p))
 			}
-			sb.WriteString(fmt.Sprintf("   - 循环路径: %s\n", strings.Join(pathParts, " -> ")))
+			sb.WriteString(fmt.Sprintf("   - Cycle path: %s\n", strings.Join(pathParts, " -> ")))
 		}
 	}
 
+	// Append details about any namespace conflicts found.
 	if len(r.Conflicts) > 0 {
-		sb.WriteString(fmt.Sprintf(" - 发现 %d 个命名空间冲突:\n", len(r.Conflicts)))
+		sb.WriteString(fmt.Sprintf(" - Found %d namespace conflict(s):\n", len(r.Conflicts)))
 		for conflictKey, files := range r.Conflicts {
 			var baseFiles []string
+			// Use the base name of the files for readability.
 			for _, f := range files {
 				baseFiles = append(baseFiles, filepath.Base(f))
 			}
-			sb.WriteString(fmt.Sprintf("   - %s 被以下文件共用: %s\n", conflictKey, strings.Join(baseFiles, ", ")))
+			sb.WriteString(fmt.Sprintf("   - %s is shared by files: %s\n", conflictKey, strings.Join(baseFiles, ", ")))
 		}
 	}
 
