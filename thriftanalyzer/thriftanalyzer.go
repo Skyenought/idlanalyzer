@@ -89,7 +89,6 @@ func AnalyzeThriftDependencies(mainIdlPath string, files map[string][]byte, opti
 		}
 	}
 
-	// --- 第三遍: 分析问题 ---
 	result := &AnalysisResult{
 		Conflicts: detectNamespaceConflicts(asts),
 	}
@@ -119,7 +118,6 @@ func detectNamespaceConflicts(asts map[uri.URI]*parser.Document) NamespaceConfli
 	for fileURI, doc := range asts {
 		filePath := fileURI.Filename()
 
-		// 检查显式定义的 namespace
 		for _, ns := range doc.Namespaces {
 			if ns.Language == nil || ns.Name == nil || ns.Language.Name == nil || ns.Name.Name == nil {
 				continue
@@ -155,7 +153,6 @@ func detectNamespaceConflicts(asts map[uri.URI]*parser.Document) NamespaceConfli
 			}
 		}
 
-		// 检查隐式命名空间 (基于文件名)
 		scope := "(default)" // 用一个特殊标识符代表隐式作用域
 		identifier := lsputils.GetIncludeName(fileURI)
 		if _, ok := definitions[identifier]; !ok {
@@ -177,7 +174,6 @@ func detectNamespaceConflicts(asts map[uri.URI]*parser.Document) NamespaceConfli
 	return conflicts
 }
 
-// detectCycleInSdk (保持不变)
 func detectCycleInSdk(u string, visited, recursionStack map[string]bool, adj map[string][]string, path []string, cycles *[]CyclicDependency) {
 	visited[u] = true
 	recursionStack[u] = true
