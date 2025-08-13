@@ -1,0 +1,1472 @@
+{
+  "schemaVersion": "1.0",
+  "idlType": "thrift",
+  "files": [
+    {
+      "path": "common/entity/entity.thrift",
+      "location": {
+        "start": {
+          "line": 1,
+          "column": 1,
+          "offset": 0
+        },
+        "end": {
+          "line": 7,
+          "column": 3,
+          "offset": 158
+        }
+      },
+      "definitions": {
+        "messages": [
+          {
+            "comments": [
+              {
+                "text": "// Entity",
+                "location": {
+                  "start": {
+                    "line": 4,
+                    "column": 1,
+                    "offset": 110
+                  },
+                  "end": {
+                    "line": 4,
+                    "column": 10,
+                    "offset": 119
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 5,
+                "column": 1,
+                "offset": 121
+              },
+              "end": {
+                "line": 7,
+                "column": 3,
+                "offset": 158
+              }
+            },
+            "content": "struct Entity {\r\n\t1: string gender\r\n}",
+            "name": "Entity",
+            "fullyQualifiedName": "common/entity/entity.thrift#Entity",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 5,
+                    "column": 16,
+                    "offset": 136
+                  },
+                  "end": {
+                    "line": 6,
+                    "column": 19,
+                    "offset": 155
+                  }
+                },
+                "id": 1,
+                "name": "gender",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 6,
+                      "column": 5,
+                      "offset": 142
+                    },
+                    "end": {
+                      "line": 6,
+                      "column": 12,
+                      "offset": 149
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              }
+            ]
+          }
+        ]
+      },
+      "namespaces": [
+        {
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 52,
+              "offset": 51
+            }
+          },
+          "scope": "go",
+          "name": "abcoder.testdata.thrifts.common.entity"
+        },
+        {
+          "location": {
+            "start": {
+              "line": 2,
+              "column": 1,
+              "offset": 53
+            },
+            "end": {
+              "line": 2,
+              "column": 54,
+              "offset": 106
+            }
+          },
+          "scope": "java",
+          "name": "abcoder.testdata.thrifts.common.entity"
+        }
+      ]
+    },
+    {
+      "path": "gender/gender.thrift",
+      "location": {
+        "start": {
+          "line": 1,
+          "column": 1,
+          "offset": 0
+        },
+        "end": {
+          "line": 9,
+          "column": 3,
+          "offset": 198
+        }
+      },
+      "imports": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 1,
+              "offset": 96
+            },
+            "end": {
+              "line": 4,
+              "column": 41,
+              "offset": 136
+            }
+          },
+          "value": "\"../common/entity/entity.thrift\"",
+          "path": "common/entity/entity.thrift"
+        }
+      ],
+      "definitions": {
+        "messages": [
+          {
+            "location": {
+              "start": {
+                "line": 6,
+                "column": 1,
+                "offset": 140
+              },
+              "end": {
+                "line": 9,
+                "column": 3,
+                "offset": 198
+              }
+            },
+            "content": "struct Gender {\r\n\t1: string gender\r\n\t2: entity.Entity e\r\n}",
+            "name": "Gender",
+            "fullyQualifiedName": "gender/gender.thrift#Gender",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 6,
+                    "column": 16,
+                    "offset": 155
+                  },
+                  "end": {
+                    "line": 7,
+                    "column": 19,
+                    "offset": 174
+                  }
+                },
+                "id": 1,
+                "name": "gender",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 7,
+                      "column": 5,
+                      "offset": 161
+                    },
+                    "end": {
+                      "line": 7,
+                      "column": 12,
+                      "offset": 168
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 7,
+                    "column": 18,
+                    "offset": 174
+                  },
+                  "end": {
+                    "line": 8,
+                    "column": 21,
+                    "offset": 195
+                  }
+                },
+                "id": 2,
+                "name": "e",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 8,
+                      "column": 5,
+                      "offset": 180
+                    },
+                    "end": {
+                      "line": 8,
+                      "column": 19,
+                      "offset": 194
+                    }
+                  },
+                  "name": "entity.Entity",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "common/entity/entity.thrift#Entity"
+                },
+                "required": "optional"
+              }
+            ]
+          }
+        ]
+      },
+      "namespaces": [
+        {
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 45,
+              "offset": 44
+            }
+          },
+          "scope": "go",
+          "name": "abcoder.testdata.thrifts.gender"
+        },
+        {
+          "location": {
+            "start": {
+              "line": 2,
+              "column": 1,
+              "offset": 46
+            },
+            "end": {
+              "line": 2,
+              "column": 47,
+              "offset": 92
+            }
+          },
+          "scope": "java",
+          "name": "abcoder.testdata.thrifts.gender"
+        }
+      ]
+    },
+    {
+      "path": "main.thrift",
+      "location": {
+        "start": {
+          "line": 1,
+          "column": 1,
+          "offset": 0
+        },
+        "end": {
+          "line": 70,
+          "column": 3,
+          "offset": 1855
+        }
+      },
+      "imports": [
+        {
+          "comments": [
+            {
+              "text": "// 你也可以在这里包含其他的 thrift 文件",
+              "location": {
+                "start": {
+                  "line": 7,
+                  "column": 1,
+                  "offset": 198
+                },
+                "end": {
+                  "line": 7,
+                  "column": 26,
+                  "offset": 251
+                }
+              }
+            },
+            {
+              "text": "// include \"shared.thrift\"",
+              "location": {
+                "start": {
+                  "line": 8,
+                  "column": 1,
+                  "offset": 252
+                },
+                "end": {
+                  "line": 8,
+                  "column": 27,
+                  "offset": 278
+                }
+              }
+            }
+          ],
+          "location": {
+            "start": {
+              "line": 9,
+              "column": 1,
+              "offset": 279
+            },
+            "end": {
+              "line": 9,
+              "column": 31,
+              "offset": 309
+            }
+          },
+          "value": "\"person/person.thrift\"",
+          "path": "person/person.thrift"
+        }
+      ],
+      "definitions": {
+        "services": [
+          {
+            "comments": [
+              {
+                "text": "/**\n * 服务（Service）定义了你的 RPC 公共接口。\n * 代码生成器会为你创建客户端和服务器的存根（stubs）。\n */",
+                "location": {
+                  "start": {
+                    "line": 55,
+                    "column": 1,
+                    "offset": 1274
+                  },
+                  "end": {
+                    "line": 58,
+                    "column": 5,
+                    "offset": 1417
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 59,
+                "column": 1,
+                "offset": 1418
+              },
+              "end": {
+                "line": 70,
+                "column": 2,
+                "offset": 1855
+              }
+            },
+            "content": "service Greeter {\n  //  一个简单的函数，返回一句问候。\n  //   它可能会抛出 InvalidRequest 异常。\n  HelloResponse sayHello(1: HelloRequest request) throws (1: InvalidRequest err),\n\n  /**\n   * 'oneway' 函数表示客户端发送请求后不会等待服务器的响应。\n   * 客户端不会阻塞，服务器也不会发送回包。\n   * Oneway 函数的返回类型必须是 void。\n   */\n  oneway void ping(),\n}",
+            "name": "Greeter",
+            "fullyQualifiedName": "main.thrift#Greeter",
+            "functions": [
+              {
+                "comments": [
+                  {
+                    "text": "//  一个简单的函数，返回一句问候。",
+                    "location": {
+                      "start": {
+                        "line": 60,
+                        "column": 3,
+                        "offset": 1438
+                      },
+                      "end": {
+                        "line": 60,
+                        "column": 22,
+                        "offset": 1487
+                      }
+                    }
+                  },
+                  {
+                    "text": "//   它可能会抛出 InvalidRequest 异常。",
+                    "location": {
+                      "start": {
+                        "line": 61,
+                        "column": 3,
+                        "offset": 1490
+                      },
+                      "end": {
+                        "line": 61,
+                        "column": 33,
+                        "offset": 1538
+                      }
+                    }
+                  }
+                ],
+                "location": {
+                  "start": {
+                    "line": 62,
+                    "column": 3,
+                    "offset": 1541
+                  },
+                  "end": {
+                    "line": 62,
+                    "column": 82,
+                    "offset": 1620
+                  }
+                },
+                "signature": "HelloResponse sayHello(1: HelloRequest request) throws (1: InvalidRequest err)",
+                "name": "sayHello",
+                "fullyQualifiedName": "main.thrift#Greeter.sayHello",
+                "returnType": {
+                  "location": {
+                    "start": {
+                      "line": 62,
+                      "column": 3,
+                      "offset": 1541
+                    },
+                    "end": {
+                      "line": 62,
+                      "column": 17,
+                      "offset": 1555
+                    }
+                  },
+                  "name": "HelloResponse",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "main.thrift#HelloResponse"
+                },
+                "parameters": [
+                  {
+                    "location": {
+                      "start": {
+                        "line": 62,
+                        "column": 26,
+                        "offset": 1564
+                      },
+                      "end": {
+                        "line": 62,
+                        "column": 49,
+                        "offset": 1587
+                      }
+                    },
+                    "id": 1,
+                    "name": "request",
+                    "type": {
+                      "location": {
+                        "start": {
+                          "line": 62,
+                          "column": 29,
+                          "offset": 1567
+                        },
+                        "end": {
+                          "line": 62,
+                          "column": 42,
+                          "offset": 1580
+                        }
+                      },
+                      "name": "HelloRequest",
+                      "isPrimitive": false,
+                      "fullyQualifiedName": "main.thrift#HelloRequest"
+                    },
+                    "required": "optional"
+                  }
+                ],
+                "throws": [
+                  {
+                    "location": {
+                      "start": {
+                        "line": 62,
+                        "column": 59,
+                        "offset": 1597
+                      },
+                      "end": {
+                        "line": 62,
+                        "column": 80,
+                        "offset": 1618
+                      }
+                    },
+                    "id": 1,
+                    "name": "err",
+                    "type": {
+                      "location": {
+                        "start": {
+                          "line": 62,
+                          "column": 62,
+                          "offset": 1600
+                        },
+                        "end": {
+                          "line": 62,
+                          "column": 77,
+                          "offset": 1615
+                        }
+                      },
+                      "name": "InvalidRequest",
+                      "isPrimitive": false,
+                      "fullyQualifiedName": "main.thrift#InvalidRequest"
+                    },
+                    "required": "optional"
+                  }
+                ]
+              },
+              {
+                "comments": [
+                  {
+                    "text": "/**\n   * 'oneway' 函数表示客户端发送请求后不会等待服务器的响应。\n   * 客户端不会阻塞，服务器也不会发送回包。\n   * Oneway 函数的返回类型必须是 void。\n   */",
+                    "location": {
+                      "start": {
+                        "line": 64,
+                        "column": 3,
+                        "offset": 1624
+                      },
+                      "end": {
+                        "line": 68,
+                        "column": 7,
+                        "offset": 1831
+                      }
+                    }
+                  }
+                ],
+                "location": {
+                  "start": {
+                    "line": 69,
+                    "column": 3,
+                    "offset": 1834
+                  },
+                  "end": {
+                    "line": 69,
+                    "column": 22,
+                    "offset": 1853
+                  }
+                },
+                "signature": "oneway void ping()",
+                "name": "ping",
+                "fullyQualifiedName": "main.thrift#Greeter.ping",
+                "returnType": {
+                  "location": {
+                    "start": {
+                      "line": 69,
+                      "column": 10,
+                      "offset": 1841
+                    },
+                    "end": {
+                      "line": 69,
+                      "column": 15,
+                      "offset": 1846
+                    }
+                  },
+                  "name": "void",
+                  "isPrimitive": true
+                },
+                "parameters": []
+              }
+            ]
+          }
+        ],
+        "messages": [
+          {
+            "comments": [
+              {
+                "text": "/**\n * 结构体（Struct）是 Thrift 中的基本构建块。\n * 它们本质上等同于类，但是没有继承。\n */",
+                "location": {
+                  "start": {
+                    "line": 22,
+                    "column": 1,
+                    "offset": 472
+                  },
+                  "end": {
+                    "line": 25,
+                    "column": 5,
+                    "offset": 594
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 26,
+                "column": 1,
+                "offset": 595
+              },
+              "end": {
+                "line": 31,
+                "column": 2,
+                "offset": 781
+              }
+            },
+            "content": "struct UserProfile {\n  1: required           i32    uid (uid.get=\"haha\"),\n  2: required           string name,\n  3: optional           string email,\n  4: map\u003cstring,string\u003e attributes,\n}",
+            "name": "UserProfile",
+            "fullyQualifiedName": "main.thrift#UserProfile",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 27,
+                    "column": 0,
+                    "offset": 615
+                  },
+                  "end": {
+                    "line": 27,
+                    "column": 53,
+                    "offset": 668
+                  }
+                },
+                "id": 1,
+                "name": "uid",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 27,
+                      "column": 25,
+                      "offset": 640
+                    },
+                    "end": {
+                      "line": 27,
+                      "column": 32,
+                      "offset": 647
+                    }
+                  },
+                  "name": "i32",
+                  "isPrimitive": true
+                },
+                "required": "required",
+                "annotations": [
+                  {
+                    "name": "uid.get",
+                    "value": {
+                      "value": "\"haha\""
+                    }
+                  }
+                ]
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 28,
+                    "column": 0,
+                    "offset": 668
+                  },
+                  "end": {
+                    "line": 28,
+                    "column": 37,
+                    "offset": 705
+                  }
+                },
+                "id": 2,
+                "name": "name",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 28,
+                      "column": 25,
+                      "offset": 693
+                    },
+                    "end": {
+                      "line": 28,
+                      "column": 32,
+                      "offset": 700
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "required"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 29,
+                    "column": 0,
+                    "offset": 705
+                  },
+                  "end": {
+                    "line": 29,
+                    "column": 38,
+                    "offset": 743
+                  }
+                },
+                "id": 3,
+                "name": "email",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 29,
+                      "column": 25,
+                      "offset": 730
+                    },
+                    "end": {
+                      "line": 29,
+                      "column": 32,
+                      "offset": 737
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 30,
+                    "column": 0,
+                    "offset": 743
+                  },
+                  "end": {
+                    "line": 30,
+                    "column": 36,
+                    "offset": 779
+                  }
+                },
+                "id": 4,
+                "name": "attributes",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 30,
+                      "column": 6,
+                      "offset": 749
+                    },
+                    "end": {
+                      "line": 30,
+                      "column": 25,
+                      "offset": 768
+                    }
+                  },
+                  "name": "map",
+                  "isPrimitive": true,
+                  "keyType": {
+                    "location": {
+                      "start": {
+                        "line": 30,
+                        "column": 10,
+                        "offset": 753
+                      },
+                      "end": {
+                        "line": 30,
+                        "column": 16,
+                        "offset": 759
+                      }
+                    },
+                    "name": "string",
+                    "isPrimitive": true
+                  },
+                  "valueType": {
+                    "location": {
+                      "start": {
+                        "line": 30,
+                        "column": 17,
+                        "offset": 760
+                      },
+                      "end": {
+                        "line": 30,
+                        "column": 23,
+                        "offset": 766
+                      }
+                    },
+                    "name": "string",
+                    "isPrimitive": true
+                  }
+                },
+                "required": "optional"
+              }
+            ]
+          },
+          {
+            "comments": [
+              {
+                "text": "// sayHello 方法的请求体",
+                "location": {
+                  "start": {
+                    "line": 33,
+                    "column": 1,
+                    "offset": 783
+                  },
+                  "end": {
+                    "line": 33,
+                    "column": 19,
+                    "offset": 813
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 34,
+                "column": 1,
+                "offset": 814
+              },
+              "end": {
+                "line": 37,
+                "column": 2,
+                "offset": 905
+              }
+            },
+            "content": "struct HelloRequest {\n  1: required string       name,\n  2: optional UserProfile profile,\n}",
+            "name": "HelloRequest",
+            "fullyQualifiedName": "main.thrift#HelloRequest",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 35,
+                    "column": 0,
+                    "offset": 835
+                  },
+                  "end": {
+                    "line": 35,
+                    "column": 33,
+                    "offset": 868
+                  }
+                },
+                "id": 1,
+                "name": "name",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 35,
+                      "column": 15,
+                      "offset": 850
+                    },
+                    "end": {
+                      "line": 35,
+                      "column": 28,
+                      "offset": 863
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "required"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 36,
+                    "column": 0,
+                    "offset": 868
+                  },
+                  "end": {
+                    "line": 36,
+                    "column": 35,
+                    "offset": 903
+                  }
+                },
+                "id": 2,
+                "name": "profile",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 36,
+                      "column": 15,
+                      "offset": 883
+                    },
+                    "end": {
+                      "line": 36,
+                      "column": 27,
+                      "offset": 895
+                    }
+                  },
+                  "name": "UserProfile",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "main.thrift#UserProfile"
+                },
+                "required": "optional"
+              }
+            ]
+          },
+          {
+            "comments": [
+              {
+                "text": "// sayHello 方法的响应体",
+                "location": {
+                  "start": {
+                    "line": 39,
+                    "column": 1,
+                    "offset": 907
+                  },
+                  "end": {
+                    "line": 39,
+                    "column": 19,
+                    "offset": 937
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 40,
+                "column": 1,
+                "offset": 938
+              },
+              "end": {
+                "line": 44,
+                "column": 2,
+                "offset": 1059
+              }
+            },
+            "content": "struct HelloResponse {\n  1: required string message,\n  2: optional Status status = Status.OK,\n  3: person.Person person\n}",
+            "name": "HelloResponse",
+            "fullyQualifiedName": "main.thrift#HelloResponse",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 41,
+                    "column": 0,
+                    "offset": 960
+                  },
+                  "end": {
+                    "line": 41,
+                    "column": 30,
+                    "offset": 990
+                  }
+                },
+                "id": 1,
+                "name": "message",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 41,
+                      "column": 15,
+                      "offset": 975
+                    },
+                    "end": {
+                      "line": 41,
+                      "column": 22,
+                      "offset": 982
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "required"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 42,
+                    "column": 0,
+                    "offset": 990
+                  },
+                  "end": {
+                    "line": 42,
+                    "column": 41,
+                    "offset": 1031
+                  }
+                },
+                "id": 2,
+                "name": "status",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 42,
+                      "column": 15,
+                      "offset": 1005
+                    },
+                    "end": {
+                      "line": 42,
+                      "column": 22,
+                      "offset": 1012
+                    }
+                  },
+                  "name": "Status",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "main.thrift#Status"
+                },
+                "required": "optional",
+                "defaultValue": {
+                  "value": "Status.OK"
+                }
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 43,
+                    "column": 0,
+                    "offset": 1031
+                  },
+                  "end": {
+                    "line": 43,
+                    "column": 26,
+                    "offset": 1057
+                  }
+                },
+                "id": 3,
+                "name": "person",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 43,
+                      "column": 6,
+                      "offset": 1037
+                    },
+                    "end": {
+                      "line": 43,
+                      "column": 20,
+                      "offset": 1051
+                    }
+                  },
+                  "name": "person.Person",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "person/person.thrift#Person"
+                },
+                "required": "optional"
+              }
+            ]
+          },
+          {
+            "comments": [
+              {
+                "text": "/**\n * 异常（Exception）在功能上等同于结构体，\n * 不同之处在于它们在目标语言中会继承原生的异常基类。\n */",
+                "location": {
+                  "start": {
+                    "line": 46,
+                    "column": 1,
+                    "offset": 1061
+                  },
+                  "end": {
+                    "line": 49,
+                    "column": 5,
+                    "offset": 1205
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 50,
+                "column": 1,
+                "offset": 1206
+              },
+              "end": {
+                "line": 53,
+                "column": 2,
+                "offset": 1272
+              }
+            },
+            "content": "exception InvalidRequest {\n  1: i32    code,\n  2: string reason,\n}",
+            "name": "InvalidRequest",
+            "fullyQualifiedName": "main.thrift#InvalidRequest",
+            "type": "exception",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 51,
+                    "column": 0,
+                    "offset": 1232
+                  },
+                  "end": {
+                    "line": 51,
+                    "column": 18,
+                    "offset": 1250
+                  }
+                },
+                "id": 1,
+                "name": "code",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 51,
+                      "column": 6,
+                      "offset": 1238
+                    },
+                    "end": {
+                      "line": 51,
+                      "column": 13,
+                      "offset": 1245
+                    }
+                  },
+                  "name": "i32",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 52,
+                    "column": 0,
+                    "offset": 1250
+                  },
+                  "end": {
+                    "line": 52,
+                    "column": 20,
+                    "offset": 1270
+                  }
+                },
+                "id": 2,
+                "name": "reason",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 52,
+                      "column": 6,
+                      "offset": 1256
+                    },
+                    "end": {
+                      "line": 52,
+                      "column": 13,
+                      "offset": 1263
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              }
+            ]
+          }
+        ],
+        "enums": [
+          {
+            "comments": [
+              {
+                "text": "/**\n * 枚举（Enum）类型，用于定义一组命名的常量。\n */",
+                "location": {
+                  "start": {
+                    "line": 14,
+                    "column": 1,
+                    "offset": 357
+                  },
+                  "end": {
+                    "line": 16,
+                    "column": 5,
+                    "offset": 429
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 17,
+                "column": 1,
+                "offset": 430
+              },
+              "end": {
+                "line": 20,
+                "column": 2,
+                "offset": 470
+              }
+            },
+            "content": "enum Status {\n  OK    = 0,\n  ERROR = 1\n}",
+            "name": "Status",
+            "fullyQualifiedName": "main.thrift#Status",
+            "values": [
+              {
+                "location": {
+                  "start": {
+                    "line": 18,
+                    "column": 3,
+                    "offset": 446
+                  },
+                  "end": {
+                    "line": 18,
+                    "column": 13,
+                    "offset": 456
+                  }
+                },
+                "name": "OK",
+                "value": 0
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 19,
+                    "column": 3,
+                    "offset": 459
+                  },
+                  "end": {
+                    "line": 19,
+                    "column": 12,
+                    "offset": 468
+                  }
+                },
+                "name": "ERROR",
+                "value": 1
+              }
+            ]
+          }
+        ],
+        "constants": [
+          {
+            "comments": [
+              {
+                "text": "// 定义一个常量",
+                "location": {
+                  "start": {
+                    "line": 11,
+                    "column": 1,
+                    "offset": 311
+                  },
+                  "end": {
+                    "line": 11,
+                    "column": 10,
+                    "offset": 332
+                  }
+                }
+              }
+            ],
+            "location": {
+              "start": {
+                "line": 12,
+                "column": 1,
+                "offset": 333
+              },
+              "end": {
+                "line": 12,
+                "column": 23,
+                "offset": 355
+              }
+            },
+            "content": "const i32 VERSION = 1;",
+            "name": "VERSION",
+            "fullyQualifiedName": "main.thrift#VERSION",
+            "type": {
+              "location": {
+                "start": {
+                  "line": 12,
+                  "column": 7,
+                  "offset": 339
+                },
+                "end": {
+                  "line": 12,
+                  "column": 11,
+                  "offset": 343
+                }
+              },
+              "name": "i32",
+              "isPrimitive": true
+            },
+            "value": "1"
+          }
+        ]
+      },
+      "namespaces": [
+        {
+          "comments": [
+            {
+              "text": "/**\n * 这是 thrift 文件的开头，通常用来定义不同编程语言生成代码时使用的命名空间。\n */",
+              "location": {
+                "start": {
+                  "line": 1,
+                  "column": 1,
+                  "offset": 0
+                },
+                "end": {
+                  "line": 3,
+                  "column": 5,
+                  "offset": 118
+                }
+              }
+            }
+          ],
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 1,
+              "offset": 119
+            },
+            "end": {
+              "line": 4,
+              "column": 38,
+              "offset": 156
+            }
+          },
+          "scope": "go",
+          "name": "abcoder.testdata.thrifts"
+        },
+        {
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 1,
+              "offset": 157
+            },
+            "end": {
+              "line": 5,
+              "column": 40,
+              "offset": 196
+            }
+          },
+          "scope": "java",
+          "name": "abcoder.testdata.thrifts"
+        }
+      ]
+    },
+    {
+      "path": "person/person.thrift",
+      "location": {
+        "start": {
+          "line": 1,
+          "column": 1,
+          "offset": 0
+        },
+        "end": {
+          "line": 9,
+          "column": 3,
+          "offset": 194
+        }
+      },
+      "imports": [
+        {
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 1,
+              "offset": 96
+            },
+            "end": {
+              "line": 4,
+              "column": 34,
+              "offset": 129
+            }
+          },
+          "value": "\"../gender/gender.thrift\"",
+          "path": "gender/gender.thrift"
+        }
+      ],
+      "definitions": {
+        "messages": [
+          {
+            "location": {
+              "start": {
+                "line": 6,
+                "column": 1,
+                "offset": 133
+              },
+              "end": {
+                "line": 9,
+                "column": 3,
+                "offset": 194
+              }
+            },
+            "content": "struct Person {\r\n\t1: string name\r\n\t2: gender.Gender gender\r\n}",
+            "name": "Person",
+            "fullyQualifiedName": "person/person.thrift#Person",
+            "type": "struct",
+            "fields": [
+              {
+                "location": {
+                  "start": {
+                    "line": 6,
+                    "column": 16,
+                    "offset": 148
+                  },
+                  "end": {
+                    "line": 7,
+                    "column": 17,
+                    "offset": 165
+                  }
+                },
+                "id": 1,
+                "name": "name",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 7,
+                      "column": 5,
+                      "offset": 154
+                    },
+                    "end": {
+                      "line": 7,
+                      "column": 12,
+                      "offset": 161
+                    }
+                  },
+                  "name": "string",
+                  "isPrimitive": true
+                },
+                "required": "optional"
+              },
+              {
+                "location": {
+                  "start": {
+                    "line": 7,
+                    "column": 16,
+                    "offset": 165
+                  },
+                  "end": {
+                    "line": 8,
+                    "column": 26,
+                    "offset": 191
+                  }
+                },
+                "id": 2,
+                "name": "gender",
+                "type": {
+                  "location": {
+                    "start": {
+                      "line": 8,
+                      "column": 5,
+                      "offset": 171
+                    },
+                    "end": {
+                      "line": 8,
+                      "column": 19,
+                      "offset": 185
+                    }
+                  },
+                  "name": "gender.Gender",
+                  "isPrimitive": false,
+                  "fullyQualifiedName": "gender/gender.thrift#Gender"
+                },
+                "required": "optional"
+              }
+            ]
+          }
+        ]
+      },
+      "namespaces": [
+        {
+          "location": {
+            "start": {
+              "line": 1,
+              "column": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "column": 45,
+              "offset": 44
+            }
+          },
+          "scope": "go",
+          "name": "abcoder.testdata.thrifts.person"
+        },
+        {
+          "location": {
+            "start": {
+              "line": 2,
+              "column": 1,
+              "offset": 46
+            },
+            "end": {
+              "line": 2,
+              "column": 47,
+              "offset": 92
+            }
+          },
+          "scope": "java",
+          "name": "abcoder.testdata.thrifts.person"
+        }
+      ]
+    }
+  ]
+}
