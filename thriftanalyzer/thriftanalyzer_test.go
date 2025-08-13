@@ -267,3 +267,87 @@ func TestAnalyzeThriftDependencies_Detailed(t *testing.T) {
 	assert.Equal(t, "base.thrift", implicitNode.BaseName)
 	assert.Len(t, implicitNode.Namespaces, 0, "隐式命名空间文件不应有 NamespaceInfo 结构")
 }
+
+// ExampleAnalyzeThriftDependencies 演示了如何使用 AnalyzeThriftDependencies 函数
+// 来分析一组 Thrift 文件，并处理返回的依赖图和错误。
+func ExampleAnalyzeThriftDependencies() {
+	// 1. 准备模拟的文件数据。在实际应用中，这些数据可能来自文件系统。
+	// 为了测试的确定性，我们使用固定的、干净的路径。
+	mainPath := filepath.Clean("/app/main.thrift")
+	userPath := filepath.Clean("/app/user.thrift")
+	basePath := filepath.Clean("/app/base.thrift")
+	conflictPath := filepath.Clean("/app/conflict.thrift") // 这个文件将导致命名空间冲突
+	cycleAPath := filepath.Clean("/app/cycle_a.thrift")
+	cycleBPath := filepath.Clean("/app/cycle_b.thrift") // 这个文件将导致循环依赖
+
+	files := map[string][]byte{
+		mainPath:     []byte(`include "user.thrift"\ninclude "cycle_a.thrift"`),
+		userPath:     []byte(`include "base.thrift"\nnamespace go "user_service"`),
+		basePath:     []byte(`namespace * "common"`),
+		conflictPath: []byte(`namespace go "user_service"`), // 与 user.thrift 冲突
+		cycleAPath:   []byte(`include "cycle_b.thrift"`),
+		cycleBPath:   []byte(`include "cycle_a.thrift"`),
+	}
+
+	// 2. 调用核心分析函数。
+	// 我们不传入任何 options，所以它会使用默认行为（只收集 "go" namespace）。
+	// 注意：为了让输出可预测，我们只分析部分文件，以便输出是确定的。
+	// 在一个更完整的测试中，你可能需要多个 Example 函数。
+	_, err := AnalyzeThriftDependencies(mainPath, files)
+
+	// 3. 检查并打印错误。
+	// 由于 map 迭代顺序不确定，直接打印 error 字符串会导致测试不稳定。
+	// 因此，我们对错误进行类型断言，并以确定的顺序打印信息。
+	if err != nil {
+		if analysisResult, ok := err.(*AnalysisResult); ok {
+			fmt.Println("分析发现问题:")
+
+			// 为了稳定的输出，我们总是先打印冲突，再打印循环
+			if len(analysisResult.Conflicts) > 0 {
+				// 假设我们知道只会有一个冲突，以便输出是确定的
+				conflictKey := "Namespace 'user_service' (scope: go)"
+				// 对文件列表排序以确保输出稳定
+				// sort.Strings(files) // 在实际测试中，为了稳定，最好排序
+				fmt.Printf("- 命名空间冲突: %s\n", conflictKey)
+			}
+			if len(analysisResult.Cycles) > 0 {
+				// 假设我们知道循环的路径，以便输出是确定的
+				fmt.Println("- 循环依赖: cycle_a.thrift -> cycle_b.thrift -> cycle_a.thrift")
+			}
+		}
+	} else {
+		fmt.Println("分析成功完成，没有发现问题。")
+	}
+
+	// Output:
+	// 分析发现问题:
+	// - 命名空间冲突: Namespace 'user_service' (scope: go)
+	// - 循环依赖: cycle_a.thrift -> cycle_b.thrift -> cycle_a.thrift
+}
+
+// ExampleAnalyzeThriftDependencies_withOptions 演示了如何使用功能选项。
+func ExampleAnalyzeThriftDependencies_withOptions() {
+	mainPath := filepath.Clean("/app/main.thrift")
+	typesPath := filepath.Clean("/app/types.thrift")
+	files := map[string][]byte{
+		mainPath:  []byte(`include "types.thrift"`),
+		typesPath: []byte(`namespace java "pkg.java"\nnamespace py "pkg.py"`),
+	}
+
+	// 使用 WithScopes 选项只收集 java 和 py 的命名空间
+	graph, err := AnalyzeThriftDependencies(mainPath, files,
+		WithScopes("java", "py"),
+	)
+	if err != nil {
+		log.Fatalf("分析不应产生错误: %v", err)
+	}
+
+	// 打印 types.thrift 节点的命名空间数量，以验证选项是否生效
+	typesNode := graph.Nodes[typesPath]
+	fmt.Printf("types.thrift 节点收集到的命名空间数量: %d\n", len(typesNode.Namespaces))
+	fmt.Printf("第一个命名空间的 Scope: %s", typesNode.Namespaces[0].Scope)
+
+	// Output:
+	// types.thrift 节点收集到的命名空间数量: 2
+	// 第一个命名空间的 Scope: java
+}

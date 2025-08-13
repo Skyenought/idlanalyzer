@@ -10,7 +10,12 @@ import (
 )
 
 // AnalyzeThriftDependencies 分析 Thrift 文件的依赖关系，并返回一个包含丰富信息的图。
-func AnalyzeThriftDependencies(mainIdlPath string, files map[string][]byte) (*RichDependencyGraph, error) {
+func AnalyzeThriftDependencies(mainIdlPath string, files map[string][]byte, options ...Option) (*RichDependencyGraph, error) {
+	opts := newDefaultOptions()
+	// Apply all provided functional options.
+	for _, option := range options {
+		option(opts)
+	}
 	pegParser := &parser.PEGParser{}
 	asts := make(map[uri.URI]*parser.Document)
 
@@ -25,7 +30,6 @@ func AnalyzeThriftDependencies(mainIdlPath string, files map[string][]byte) (*Ri
 		EntryPointPath: mainIdlPath,
 	}
 
-	// --- 第一遍: 解析文件，创建所有节点 ---
 	for path, content := range cleanedFiles {
 		fileURI := uri.File(path)
 		node := &FileNode{
@@ -45,17 +49,13 @@ func AnalyzeThriftDependencies(mainIdlPath string, files map[string][]byte) (*Ri
 			// 提取 Namespace 信息
 			for _, ns := range doc.Namespaces {
 				if ns.Language != nil && ns.Name != nil && ns.Language.Name != nil && ns.Name.Name != nil {
-					node.Namespaces = append(node.Namespaces, &NamespaceInfo{
-						Scope:      ns.Language.Name.Text,
-						Identifier: ns.Name.Name.Text,
-					})
+					node.Namespaces = extractNamespacesWithOptions(doc, opts)
 				}
 			}
 		}
 		graph.Nodes[path] = node
 	}
 
-	// --- 第二遍: 遍历 AST，创建所有边 ---
 	adj := make(map[string][]string) // 用于循环检测的邻接表
 	for sourceURI, doc := range asts {
 		sourcePath := sourceURI.Filename()
@@ -207,4 +207,40 @@ func detectCycleInSdk(u string, visited, recursionStack map[string]bool, adj map
 		}
 	}
 	recursionStack[u] = false
+}
+
+func extractNamespacesWithOptions(doc *parser.Document, opts *analysisOptions) []*NamespaceInfo {
+	var infos []*NamespaceInfo
+
+	collectAll := len(opts.scopes) == 1 && opts.scopes[0] == "*"
+
+	scopesToCollect := make(map[string]struct{})
+	if !collectAll {
+		for _, s := range opts.scopes {
+			scopesToCollect[s] = struct{}{}
+		}
+	}
+
+	for _, ns := range doc.Namespaces {
+		if ns.Language == nil || ns.Name == nil || ns.Language.Name == nil || ns.Name.Name == nil {
+			continue
+		}
+		scope := ns.Language.Name.Text
+
+		if collectAll {
+			infos = append(infos, &NamespaceInfo{
+				Scope:      scope,
+				Identifier: ns.Name.Name.Text,
+			})
+		} else {
+			if _, ok := scopesToCollect[scope]; ok {
+				infos = append(infos, &NamespaceInfo{
+					Scope:      scope,
+					Identifier: ns.Name.Name.Text,
+				})
+			}
+		}
+	}
+
+	return infos
 }
