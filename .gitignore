@@ -3,3 +3,4 @@ protoparser
 internal
 repomix.md
 generated_thrifts
+graphviz.go
