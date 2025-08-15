@@ -121,9 +121,10 @@ func createParameterAnnotation(in, name string) *idl_ast.Annotation {
 
 func (c *Converter) getMainThriftFileName() string {
 	base := filepath.Base(c.filePath)
-	ext := filepath.Ext(base)
-	return strings.TrimSuffix(base, ext) + ".thrift"
+	prefix := strings.TrimSuffix(base, filepath.Ext(base))
+	return filepath.Join(prefix, prefix+".thrift")
 }
+
 func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 	if _, ok := c.fileDefinitions[filename]; !ok {
 		c.fileDefinitions[filename] = &idl_ast.Definitions{}
@@ -140,4 +141,9 @@ func toLowerCamelCase(s string) string {
 	runes := []rune(pascal)
 	runes[0] = unicode.ToLower(runes[0])
 	return string(runes)
+}
+
+func (c *Converter) getOutputDirPrefix() string {
+	base := filepath.Base(c.filePath)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }

@@ -2,6 +2,7 @@ package swagger2thrift
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -47,10 +48,17 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 		schema := schemas[name]
 
 		namespace, shortName := splitDefinitionName(name)
-		fileName := c.getMainThriftFileName()
-		if namespace != "main" {
-			fileName = namespace + ".thrift"
+
+		var fileName string
+		outputDir := c.getOutputDirPrefix() // 获取共同的输出目录, e.g., "docs_swagger"
+
+		if namespace == "main" {
+			fileName = c.getMainThriftFileName() // "docs_swagger/docs_swagger.thrift"
+		} else {
+			fileName = filepath.Join(outputDir, namespace+".thrift") // "docs_swagger/payload.thrift"
 		}
+		// --------------------
+
 		defs := c.getOrCreateDefs(fileName)
 		fqn := fmt.Sprintf("%s#%s", fileName, shortName)
 
