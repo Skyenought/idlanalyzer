@@ -4,3 +4,5 @@ internal
 repomix.md
 generated_thrifts
 graphviz.go
+*.json
+*.yaml
