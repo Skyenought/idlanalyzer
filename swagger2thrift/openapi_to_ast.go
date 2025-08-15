@@ -138,6 +138,14 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 	}
 
 	if schema.Ref != "" {
+		resolvedSchema := c.resolveSchema(schema.Ref)
+		// If the resolved schema is a simple type alias (a candidate for a typedef),
+		// "flatten" it by converting its underlying type directly instead of using the alias name.
+		if resolvedSchema != nil && isTypedefCandidate(resolvedSchema) {
+			return c.convertSchemaToType(resolvedSchema, currentFileNamespace, parentName, fieldName)
+		}
+
+		// Original logic for complex structs and other non-flattenable types
 		refFullName := ""
 		if strings.HasPrefix(schema.Ref, "#/components/schemas/") {
 			refFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
