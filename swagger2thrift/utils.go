@@ -2,6 +2,7 @@ package swagger2thrift
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -119,9 +120,10 @@ func createParameterAnnotation(in, name string) *idl_ast.Annotation {
 }
 
 func (c *Converter) getMainThriftFileName() string {
-	return "service.thrift"
+	base := filepath.Base(c.filePath)
+	ext := filepath.Ext(base)
+	return strings.TrimSuffix(base, ext) + ".thrift"
 }
-
 func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 	if _, ok := c.fileDefinitions[filename]; !ok {
 		c.fileDefinitions[filename] = &idl_ast.Definitions{}

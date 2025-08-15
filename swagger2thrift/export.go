@@ -29,27 +29,33 @@ func ConvertSpecsToThrift(specs map[string][]byte, options ...Option) (map[strin
 		opt(cfg)
 	}
 
-	// Process the first file found in the map.
-	// In a typical scenario, this map will only contain one spec.
-	var fileName string
-	var fileContent []byte
-	for k, v := range specs {
-		fileName = k
-		fileContent = v
-		break
+	allGeneratedFiles := make(map[string][]byte)
+
+	// Process every file found in the map.
+	for fileName, fileContent := range specs {
+		// The core conversion logic is now in an internal function that accepts the config
+		schema, err := convertInternal(fileName, fileContent, cfg)
+		if err != nil {
+			// Return a more specific error message
+			return nil, fmt.Errorf("failed to convert spec '%s' to AST: %w", fileName, err)
+		}
+
+		// Generate the final Thrift file(s) from the AST for the current spec
+		generatedFiles, err := thriftwriter.Generate(schema)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate thrift files from AST for spec '%s': %w", fileName, err)
+		}
+
+		// Merge the newly generated files into our aggregate map
+		for genFile, genContent := range generatedFiles {
+			if _, exists := allGeneratedFiles[genFile]; exists {
+				// Handle potential filename collisions if necessary, for now we can overwrite
+				// or return an error. For simplicity, we'll log a warning and overwrite.
+				// fmt.Printf("Warning: Duplicate filename '%s' generated from '%s'. Overwriting.\n", genFile, fileName)
+			}
+			allGeneratedFiles[genFile] = genContent
+		}
 	}
 
-	// The core conversion logic is now in an internal function that accepts the config
-	schema, err := convertInternal(fileName, fileContent, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert spec '%s' to AST: %w", fileName, err)
-	}
-
-	// Generate the final Thrift file(s) from the AST
-	generatedFiles, err := thriftwriter.Generate(schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate thrift files from AST: %w", err)
-	}
-
-	return generatedFiles, nil
+	return allGeneratedFiles, nil
 }
