@@ -18,19 +18,28 @@ func (c *Converter) assembleSchema(idlType, syntax string) *idl_ast.IDLSchema {
 	}
 	sort.Strings(fileNames)
 
-	baseName := filepath.Base(c.filePath)
-	namespaceName := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	// 1. 计算 OpenAPI 文件基础命名空间，这将是所有生成命名空间的前缀。
+	//    例如，对于 "docs_swagger_3.json"，这里会得到 "docs_swagger_3"。
+	openapiBaseName := filepath.Base(c.filePath)
+	openapiBaseNamespace := strings.TrimSuffix(openapiBaseName, filepath.Ext(openapiBaseName))
 	sanitizer := strings.NewReplacer("-", "_", ".", "_", " ", "_")
-	namespaceName = sanitizer.Replace(namespaceName)
+	openapiBaseNamespace = sanitizer.Replace(openapiBaseNamespace)
 
 	for _, fileName := range fileNames {
 		defs := c.fileDefinitions[fileName]
+
+		thriftFileOnly := filepath.Base(fileName)
+		thriftFileBase := strings.TrimSuffix(thriftFileOnly, filepath.Ext(thriftFileOnly))
+		sanitizedThriftFileBase := sanitizer.Replace(thriftFileBase)
+
+		finalNamespace := fmt.Sprintf("%s.%s", openapiBaseNamespace, sanitizedThriftFileBase)
+
 		file := idl_ast.File{
 			Path:        fileName,
 			Syntax:      syntax,
 			Definitions: *defs,
 			Namespaces: []idl_ast.Namespace{
-				{Scope: "go", Name: namespaceName},
+				{Scope: "go", Name: finalNamespace},
 			},
 			Imports: c.calculateImports(fileName, defs),
 		}
