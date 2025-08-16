@@ -128,96 +128,14 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	return finalSchema
 }
 
-// swagger2thrift/openapi_to_ast.go
-
 func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentName, fieldName string) *idl_ast.Type {
 	if schema == nil {
 		return &idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// 仅当类型为 "integer" 且存在 enum 字段时，才为其生成新的 enum 类型
-	if len(schema.Enum) > 0 && schema.Type == "integer" {
-		// 如果没有父级名称和字段名作为上下文，则无法生成有意义的枚举名，回退到原始类型
-		if parentName != "" && fieldName != "" {
-			// 根据上下文生成一个唯一的枚举类型名称, 例如: ParentStructFieldName
-			enumName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
-
-			var targetFileName string
-			outputDir := c.getOutputDirPrefix()
-			if parentNamespace == "main" {
-				targetFileName = c.getMainThriftFileName()
-			} else {
-				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
-			}
-			defs := c.getOrCreateDefs(targetFileName)
-
-			// 检查同名 enum 是否已存在
-			enumExists := false
-			for _, e := range defs.Enums {
-				if e.Name == enumName {
-					enumExists = true
-					break
-				}
-			}
-
-			if !enumExists {
-				newEnum := idl_ast.Enum{
-					Name:               enumName,
-					FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, enumName),
-					Comments:           descriptionToComments(schema.Description),
-				}
-
-				useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
-				for i, val := range schema.Enum {
-					var memberName string
-					if useVarNames {
-						memberName = schema.XEnumVarNames[i]
-					} else {
-						memberName = fmt.Sprintf("%s_%v", enumName, val)
-					}
-
-					intValue, ok := val.(int)
-					if !ok {
-						if floatVal, isFloat := val.(float64); isFloat {
-							intValue = int(floatVal)
-						} else {
-							intValue = i // 如果转换失败，则使用索引作为值
-						}
-					}
-					newEnum.Values = append(newEnum.Values, idl_ast.EnumValue{
-						Name:  memberName,
-						Value: intValue,
-					})
-				}
-				defs.Enums = append(defs.Enums, newEnum)
-			}
-			// 返回新创建的 enum 类型
-			return &idl_ast.Type{Name: enumName, IsPrimitive: false}
-		}
-	}
-
-	// 在处理 allOf 之前，增加一个特殊情况的判断。
-	// 很多 Swagger/OpenAPI 文件使用 `allOf` + 单个 `$ref` 的方式来包装一个已有的类型，
-	// 比如在通用响应体结构中嵌入具体的数据模型。
-	// 如果不特殊处理，`flattenAllOf`会把已有的模型“压平”，导致丢失其原始名称，从而被当作内联对象重新生成，造成重复定义。
-	// 这里的逻辑是：如果 allOf 中只有一个元素，且该元素是 $ref，那么我们就直接处理这个 $ref，而不是压平它。
-	if len(schema.AllOf) == 1 && schema.AllOf[0].Ref != "" {
-		// 直接将这个 schema 视为对 `allOf` 内部那个 $ref 的引用，然后递归调用自身进行处理。
-		// 这样就能走到下面的 `if schema.Ref != ""` 分支，并正确地使用已有的类型名称。
-		return c.convertSchemaToType(schema.AllOf[0], parentNamespace, parentName, fieldName)
-	}
-
-	// 对于包含多个元素或不含 $ref 的复杂 `allOf`，我们仍然使用原来的压平逻辑。
-	if len(schema.AllOf) > 0 {
-		schema = c.flattenAllOf(schema.AllOf)
-	}
-
+	// 1. 最高优先级：处理引用。如果 schema 是一个引用，直接返回引用名，不再进行任何内部解析。
+	//    这是为了确保全局定义（如 enum, struct）只由 processSchemas 处理一次。
 	if schema.Ref != "" {
-		resolvedSchema := c.resolveSchema(schema.Ref)
-		if resolvedSchema != nil && isTypedefCandidate(resolvedSchema) {
-			return c.convertSchemaToType(resolvedSchema, parentNamespace, parentName, fieldName)
-		}
-
 		refFullName := ""
 		if strings.HasPrefix(schema.Ref, "#/components/schemas/") {
 			refFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
@@ -241,6 +159,71 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 		}
 	}
 
+	// 2. 处理 allOf，这可能会将多个 schema (包括 $ref) 合并。
+	if len(schema.AllOf) > 0 {
+		// 特殊情况：如果 allOf 只有一个 $ref 元素，直接处理该 $ref
+		if len(schema.AllOf) == 1 && schema.AllOf[0].Ref != "" {
+			return c.convertSchemaToType(schema.AllOf[0], parentNamespace, parentName, fieldName)
+		}
+		// 否则，压平 allOf
+		schema = c.flattenAllOf(schema.AllOf)
+	}
+
+	// 3. 处理内联（匿名）的整型枚举。这段逻辑现在只会在 schema 没有 $ref 时执行。
+	if len(schema.Enum) > 0 && schema.Type == "integer" {
+		if parentName != "" && fieldName != "" {
+			enumName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
+			var targetFileName string
+			outputDir := c.getOutputDirPrefix()
+			if parentNamespace == "main" {
+				targetFileName = c.getMainThriftFileName()
+			} else {
+				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
+			}
+			defs := c.getOrCreateDefs(targetFileName)
+
+			enumExists := false
+			for _, e := range defs.Enums {
+				if e.Name == enumName {
+					enumExists = true
+					break
+				}
+			}
+
+			if !enumExists {
+				newEnum := idl_ast.Enum{
+					Name:               enumName,
+					FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, enumName),
+					Comments:           descriptionToComments(schema.Description),
+				}
+				useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
+				for i, val := range schema.Enum {
+					var memberName string
+					if useVarNames {
+						memberName = schema.XEnumVarNames[i]
+					} else {
+						memberName = fmt.Sprintf("%s_%v", enumName, val)
+					}
+					intValue, ok := val.(int)
+					if !ok {
+						if floatVal, isFloat := val.(float64); isFloat {
+							intValue = int(floatVal)
+						} else {
+							intValue = i
+						}
+					}
+					newEnum.Values = append(newEnum.Values, idl_ast.EnumValue{
+						Name:  memberName,
+						Value: intValue,
+					})
+				}
+				defs.Enums = append(defs.Enums, newEnum)
+			}
+			return &idl_ast.Type{Name: enumName, IsPrimitive: false}
+		}
+	}
+
+	// 4. 处理基本类型、map 和内联 struct
 	switch schema.Type {
 	case "string":
 		return &idl_ast.Type{Name: "string", IsPrimitive: true}
