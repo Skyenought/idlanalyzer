@@ -128,13 +128,15 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	return finalSchema
 }
 
+// swagger2thrift/openapi_to_ast.go
+
 func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentName, fieldName string) *idl_ast.Type {
 	if schema == nil {
 		return &idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// 新增：处理内联的整型或字符串型枚举，为其生成新的 enum 类型
-	if len(schema.Enum) > 0 && (schema.Type == "integer" || schema.Type == "string") {
+	// 仅当类型为 "integer" 且存在 enum 字段时，才为其生成新的 enum 类型
+	if len(schema.Enum) > 0 && schema.Type == "integer" {
 		// 如果没有父级名称和字段名作为上下文，则无法生成有意义的枚举名，回退到原始类型
 		if parentName != "" && fieldName != "" {
 			// 根据上下文生成一个唯一的枚举类型名称, 例如: ParentStructFieldName
@@ -171,9 +173,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 					if useVarNames {
 						memberName = schema.XEnumVarNames[i]
 					} else {
-						// 对于字符串枚举值，需要将其转换为合法的标识符
-						strVal := fmt.Sprintf("%v", val)
-						memberName = fmt.Sprintf("%s_%s", enumName, toPascalCase(strVal))
+						memberName = fmt.Sprintf("%s_%v", enumName, val)
 					}
 
 					intValue, ok := val.(int)
@@ -181,7 +181,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 						if floatVal, isFloat := val.(float64); isFloat {
 							intValue = int(floatVal)
 						} else {
-							intValue = i // 如果转换失败(比如是字符串)，则使用索引作为值
+							intValue = i // 如果转换失败，则使用索引作为值
 						}
 					}
 					newEnum.Values = append(newEnum.Values, idl_ast.EnumValue{
@@ -362,7 +362,6 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 		return &idl_ast.Type{Name: "string", IsPrimitive: true}
 	}
 }
-
 func (c *Converter) convertValueToConstantValue(val any) (*idl_ast.ConstantValue, error) {
 	if val == nil {
 		return nil, nil
