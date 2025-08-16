@@ -187,7 +187,7 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 
 			funcName := c.disambiguateFunctionName(baseFuncName, path, servicePtr)
 
-			params, throws := c.processParamsAndBodyV3(op.Parameters, op.RequestBody, op.Responses)
+			params, throws := c.processParamsAndBodyV3(op.Parameters, op.RequestBody, op.Responses, reqName)
 			function := idl_ast.Function{
 				Name:               funcName,
 				FullyQualifiedName: fmt.Sprintf("%s#%s.%s", c.getMainThriftFileName(), service.Name, funcName),
@@ -263,7 +263,7 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			}
 
 			funcName := c.disambiguateFunctionName(baseFuncName, path, servicePtr)
-			params, throws := c.processParamsV2(op.Parameters, op.Responses)
+			params, throws := c.processParamsV2(op.Parameters, op.Responses, reqName)
 
 			function := idl_ast.Function{
 				Name:               funcName,
@@ -296,7 +296,7 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 	}
 	return nil
 }
-func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *RequestBody, responses map[string]*Response) ([]idl_ast.Field, []idl_ast.Field) {
+func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *RequestBody, responses map[string]*Response, parentName string) ([]idl_ast.Field, []idl_ast.Field) {
 	var astThrows []idl_ast.Field
 	for code, resp := range responses {
 		if !strings.HasPrefix(code, "2") {
@@ -331,7 +331,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 			}
 			field := &idl_ast.Field{
 				Name:     param.Name,
-				Type:     *c.convertSchemaToType(param.Schema, currentNamespace, "", param.Name),
+				Type:     *c.convertSchemaToType(param.Schema, currentNamespace, parentName, param.Name),
 				Required: required,
 				Comments: descriptionToComments(param.Description),
 			}
@@ -350,7 +350,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
 					field := &idl_ast.Field{
 						Name:     propName,
-						Type:     *c.convertSchemaToType(propSchema, currentNamespace, "", propName),
+						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 						Required: required,
 						Comments: descriptionToComments(propSchema.Description),
 					}
@@ -366,7 +366,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				}
 				field := &idl_ast.Field{
 					Name:     "body",
-					Type:     *c.convertSchemaToType(mediaType.Schema, currentNamespace, "body", ""),
+					Type:     *c.convertSchemaToType(mediaType.Schema, currentNamespace, parentName, "body"),
 					Required: required,
 					Comments: descriptionToComments(reqBody.Description),
 				}
@@ -394,7 +394,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 	return astParams, astThrows
 }
 
-func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[string]*SwaggerResponse) ([]idl_ast.Field, []idl_ast.Field) {
+func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[string]*SwaggerResponse, parentName string) ([]idl_ast.Field, []idl_ast.Field) {
 	var astThrows []idl_ast.Field
 	for code, resp := range responses {
 		if !strings.HasPrefix(code, "2") {
@@ -427,7 +427,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				}
 				field := &idl_ast.Field{
 					Name:     propName,
-					Type:     *c.convertSchemaToType(propSchema, currentNamespace, param.Name, propName),
+					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 					Required: required,
 					Comments: descriptionToComments(propSchema.Description),
 				}
@@ -456,13 +456,21 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 			}
 			var paramType idl_ast.Type
 			if param.In == "body" {
-				paramType = *c.convertSchemaToType(param.Schema, currentNamespace, param.Name, "")
+				paramType = *c.convertSchemaToType(param.Schema, currentNamespace, parentName, "")
 			} else {
-				paramTypeName := param.Type
-				if paramTypeName == "" && param.Schema == nil {
-					paramTypeName = "string"
+				// MODIFICATION: 组装一个完整的临时 Schema 对象以处理内联枚举
+				tempSchema := &Schema{
+					Type:          param.Type,
+					Format:        param.Format,
+					Items:         param.Items,
+					Enum:          param.Enum,
+					XEnumVarNames: param.XEnumVarNames,
+					Description:   param.Description,
 				}
-				paramType = *c.convertSchemaToType(&Schema{Type: paramTypeName, Format: param.Format, Items: param.Items}, currentNamespace, "", param.Name)
+				if tempSchema.Type == "" {
+					tempSchema.Type = "string"
+				}
+				paramType = *c.convertSchemaToType(tempSchema, currentNamespace, parentName, param.Name)
 			}
 			field := &idl_ast.Field{
 				Name:     sanitizedName, // Use sanitized name

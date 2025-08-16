@@ -114,14 +114,16 @@ type SwaggerOperation struct {
 
 // SwaggerParameter describes a single operation parameter in Swagger 2.0.
 type SwaggerParameter struct {
-	Name        string  `yaml:"name"`
-	In          string  `yaml:"in"`
-	Description string  `yaml:"description"`
-	Required    bool    `yaml:"required"`
-	Schema      *Schema `yaml:"schema"` // Used for "in: body"
-	Type        string  `yaml:"type"`   // Used for other 'in' types
-	Format      string  `yaml:"format"`
-	Items       *Schema `yaml:"items"` // Used for array types
+	Name          string   `yaml:"name"`
+	In            string   `yaml:"in"`
+	Description   string   `yaml:"description"`
+	Required      bool     `yaml:"required"`
+	Schema        *Schema  `yaml:"schema"` // Used for "in: body"
+	Type          string   `yaml:"type"`   // Used for other 'in' types
+	Format        string   `yaml:"format"`
+	Items         *Schema  `yaml:"items"` // Used for array types
+	Enum          []any    `yaml:"enum"`
+	XEnumVarNames []string `yaml:"x-enum-varnames"`
 }
 
 // SwaggerResponse describes a single response from an API Operation in Swagger 2.0.

@@ -133,6 +133,69 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 		return &idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
+	// 新增：处理内联的整型或字符串型枚举，为其生成新的 enum 类型
+	if len(schema.Enum) > 0 && (schema.Type == "integer" || schema.Type == "string") {
+		// 如果没有父级名称和字段名作为上下文，则无法生成有意义的枚举名，回退到原始类型
+		if parentName != "" && fieldName != "" {
+			// 根据上下文生成一个唯一的枚举类型名称, 例如: ParentStructFieldName
+			enumName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
+
+			var targetFileName string
+			outputDir := c.getOutputDirPrefix()
+			if parentNamespace == "main" {
+				targetFileName = c.getMainThriftFileName()
+			} else {
+				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
+			}
+			defs := c.getOrCreateDefs(targetFileName)
+
+			// 检查同名 enum 是否已存在
+			enumExists := false
+			for _, e := range defs.Enums {
+				if e.Name == enumName {
+					enumExists = true
+					break
+				}
+			}
+
+			if !enumExists {
+				newEnum := idl_ast.Enum{
+					Name:               enumName,
+					FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, enumName),
+					Comments:           descriptionToComments(schema.Description),
+				}
+
+				useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
+				for i, val := range schema.Enum {
+					var memberName string
+					if useVarNames {
+						memberName = schema.XEnumVarNames[i]
+					} else {
+						// 对于字符串枚举值，需要将其转换为合法的标识符
+						strVal := fmt.Sprintf("%v", val)
+						memberName = fmt.Sprintf("%s_%s", enumName, toPascalCase(strVal))
+					}
+
+					intValue, ok := val.(int)
+					if !ok {
+						if floatVal, isFloat := val.(float64); isFloat {
+							intValue = int(floatVal)
+						} else {
+							intValue = i // 如果转换失败(比如是字符串)，则使用索引作为值
+						}
+					}
+					newEnum.Values = append(newEnum.Values, idl_ast.EnumValue{
+						Name:  memberName,
+						Value: intValue,
+					})
+				}
+				defs.Enums = append(defs.Enums, newEnum)
+			}
+			// 返回新创建的 enum 类型
+			return &idl_ast.Type{Name: enumName, IsPrimitive: false}
+		}
+	}
+
 	// 在处理 allOf 之前，增加一个特殊情况的判断。
 	// 很多 Swagger/OpenAPI 文件使用 `allOf` + 单个 `$ref` 的方式来包装一个已有的类型，
 	// 比如在通用响应体结构中嵌入具体的数据模型。
