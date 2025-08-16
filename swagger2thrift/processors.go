@@ -157,9 +157,10 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
-		// 定义一个固定的 HTTP 方法处理顺序
+		// 定义一个固定的 HTTP 方法处理顺序，以保证确定性
 		httpMethods := []string{"get", "put", "post", "delete", "patch"}
 
+		// 按照固定顺序遍历 HTTP 方法
 		for _, httpMethod := range httpMethods {
 			op := operations[httpMethod]
 			if op == nil {
@@ -167,6 +168,7 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			}
 
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
+			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV3(op.Responses, baseFuncName)
 			service, baseFuncName, reqName := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, returnType.Name)
 
@@ -185,10 +187,12 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 
 			funcName := c.disambiguateFunctionName(baseFuncName, path, servicePtr)
 
+			params, throws := c.processParamsAndBodyV3(op.Parameters, op.RequestBody, op.Responses)
 			function := idl_ast.Function{
 				Name:               funcName,
 				FullyQualifiedName: fmt.Sprintf("%s#%s.%s", c.getMainThriftFileName(), service.Name, funcName),
 				ReturnType:         returnType,
+				Throws:             throws,
 				Comments:           descriptionToComments(op.Description),
 				Annotations: []idl_ast.Annotation{{
 					Name:  fmt.Sprintf("api.%s", httpMethod),
@@ -196,21 +200,18 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 				}},
 			}
 
-			params, throws := c.processParamsAndBodyV3(op.Parameters, op.RequestBody, op.Responses)
-			function.Throws = throws
+			// 无论参数是否为空，都创建 Request 结构体
+			reqStruct := idl_ast.Message{
+				Name:               reqName,
+				Type:               "struct",
+				FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
+				Fields:             params, // 如果 params 为空，这里就是空 struct
+			}
+			c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
 
-			if len(params) > 0 {
-				reqStruct := idl_ast.Message{
-					Name:               reqName,
-					Type:               "struct",
-					FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
-					Fields:             params,
-				}
-				c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
-
-				function.Parameters = []idl_ast.Field{
-					{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
-				}
+			// 并且总是为函数添加参数
+			function.Parameters = []idl_ast.Field{
+				{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
 			}
 
 			servicePtr.Functions = append(servicePtr.Functions, function)
@@ -233,7 +234,10 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
+		// 定义一个固定的 HTTP 方法处理顺序，以保证确定性
 		httpMethods := []string{"get", "put", "post", "delete", "patch"}
+
+		// 按照固定顺序遍历 HTTP 方法
 		for _, httpMethod := range httpMethods {
 			op := operations[httpMethod]
 			if op == nil {
@@ -241,6 +245,7 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			}
 
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
+			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV2(op.Responses, baseFuncName)
 			service, baseFuncName, reqName := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, returnType.Name)
 
@@ -272,18 +277,18 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 				}},
 			}
 
-			if len(params) > 0 {
-				reqStruct := idl_ast.Message{
-					Name:               reqName,
-					Type:               "struct",
-					FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
-					Fields:             params,
-				}
-				c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
+			// 无论参数是否为空，都创建 Request 结构体
+			reqStruct := idl_ast.Message{
+				Name:               reqName,
+				Type:               "struct",
+				FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
+				Fields:             params, // 如果 params 为空，这里就是空 struct
+			}
+			c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
 
-				function.Parameters = []idl_ast.Field{
-					{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
-				}
+			// 并且总是为函数添加参数
+			function.Parameters = []idl_ast.Field{
+				{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
 			}
 
 			servicePtr.Functions = append(servicePtr.Functions, function)
@@ -291,7 +296,6 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 	}
 	return nil
 }
-
 func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *RequestBody, responses map[string]*Response) ([]idl_ast.Field, []idl_ast.Field) {
 	var astThrows []idl_ast.Field
 	for code, resp := range responses {
@@ -491,7 +495,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 
 func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFuncName string) idl_ast.Type {
 	if responses == nil {
-		return idl_ast.Type{Name: "void", IsPrimitive: true}
+		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
 	var bestSchema *Schema
@@ -523,7 +527,7 @@ func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFun
 	}
 
 	if bestSchema == nil {
-		return idl_ast.Type{Name: "void", IsPrimitive: true}
+		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
 	return *c.convertSchemaToType(bestSchema, "main", baseFuncName, "Response")
@@ -531,7 +535,8 @@ func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFun
 
 func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, baseFuncName string) idl_ast.Type {
 	if responses == nil {
-		return idl_ast.Type{Name: "void", IsPrimitive: true}
+		// 修改点：不再返回 void，而是创建空的 Response struct
+		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
 	var bestResp *SwaggerResponse
@@ -546,7 +551,7 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 
 		for _, code := range sortedCodes {
 			if strings.HasPrefix(code, "2") {
-				if resp := responses[code]; resp.Schema != nil {
+				if resp, ok := responses[code]; ok {
 					bestResp = resp
 					break
 				}
@@ -555,7 +560,7 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 	}
 
 	if bestResp == nil || bestResp.Schema == nil {
-		return idl_ast.Type{Name: "void", IsPrimitive: true}
+		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
 	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Response")
@@ -697,4 +702,25 @@ func getFunctionName(opID, method, path, responseTypeName string) string {
 	}
 	// Sanitize the name to remove repeated words.
 	return sanitizeName(funcName)
+}
+
+func (c *Converter) createEmptyResponseStruct(baseFuncName string) idl_ast.Type {
+	respName := baseFuncName + "EmptyResponse"
+	defs := c.getOrCreateDefs(c.getMainThriftFileName())
+
+	for _, msg := range defs.Messages {
+		if msg.Name == respName {
+			return idl_ast.Type{Name: respName, IsPrimitive: false}
+		}
+	}
+
+	emptyStruct := idl_ast.Message{
+		Name:               respName,
+		Type:               "struct",
+		FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), respName),
+		Fields:             []idl_ast.Field{},
+	}
+	defs.Messages = append(defs.Messages, emptyStruct)
+
+	return idl_ast.Type{Name: respName, IsPrimitive: false}
 }
