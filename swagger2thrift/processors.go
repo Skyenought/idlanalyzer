@@ -679,29 +679,19 @@ func (c *Converter) deduplicateRequestStructs() {
 }
 
 func getFunctionName(opID, method, path, responseTypeName string) string {
-	var funcName string
-	if opID != "" {
-		funcName = toPascalCase(method) + toPascalCase(opID)
-	} else {
-		var baseName string
-		if responseTypeName != "void" && responseTypeName != "binary" && responseTypeName != "" && !strings.HasPrefix(responseTypeName, "map<") {
-			if strings.HasPrefix(responseTypeName, "list<") {
-				innerType := strings.TrimSuffix(strings.TrimPrefix(responseTypeName, "list<"), ">")
-				_, shortName := splitDefinitionName(innerType)
-				baseName = "List" + toPascalCase(shortName) + "s"
-			} else {
-				_, shortName := splitDefinitionName(responseTypeName)
-				baseName = strings.TrimSuffix(shortName, "Response")
-			}
-		} else {
-			path = strings.ReplaceAll(path, "/", " ")
-			path = formatPathForAnnotation(path)
-			path = strings.ReplaceAll(path, ":", " by ")
-			baseName = path
-		}
-		funcName = toPascalCase(method) + toPascalCase(baseName)
-	}
-	// Sanitize the name to remove repeated words.
+	// 始终根据 HTTP 方法和请求路径生成函数名，忽略 opID 和 responseTypeName。
+	var baseName string
+
+	// 移除路径中的斜杠，并将路径参数转换为 "by" 的形式
+	path = strings.ReplaceAll(path, "/", " ")
+	path = formatPathForAnnotation(path) // 将 {param} 转换为 :param
+	path = strings.ReplaceAll(path, ":", " by ")
+	baseName = path
+
+	// 将方法名和处理后的路径名转换为帕斯卡命名法并拼接
+	funcName := toPascalCase(method) + toPascalCase(baseName)
+
+	// 清理最终生成的名称，移除重复的词汇
 	return sanitizeName(funcName)
 }
 
