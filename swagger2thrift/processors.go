@@ -157,7 +157,11 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
-		for httpMethod, op := range operations {
+		// 定义一个固定的 HTTP 方法处理顺序
+		httpMethods := []string{"get", "put", "post", "delete", "patch"}
+
+		for _, httpMethod := range httpMethods {
+			op := operations[httpMethod]
 			if op == nil {
 				continue
 			}
@@ -229,7 +233,9 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
-		for httpMethod, op := range operations {
+		httpMethods := []string{"get", "put", "post", "delete", "patch"}
+		for _, httpMethod := range httpMethods {
+			op := operations[httpMethod]
 			if op == nil {
 				continue
 			}
@@ -554,6 +560,7 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 
 	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Response")
 }
+
 func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path, responseTypeName string) (idl_ast.Service, string, string) {
 	serviceName := "HTTPService" // Default name
 	if c.cfg != nil && c.cfg.ServiceName != "" {

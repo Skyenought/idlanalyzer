@@ -2,11 +2,12 @@ package swagger2thrift
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestConvertOpenAPIToIDLSchema(t *testing.T) {
@@ -29,14 +30,17 @@ func TestConvertSpecsToThrift(t *testing.T) {
 }
 
 func Test_ConvertSpecsToThrift(t *testing.T) {
-	file, _ := os.ReadFile("fg_v2_infrastructure_controller_docs_swagger.json")
+	file, _ := os.ReadFile("testdata/fg_v2_infrastructure_controller_docs_swagger.json")
 	maps := make(map[string][]byte)
 	maps["fg_v2_infrastructure_controller_docs_swagger.json"] = file
 	toThrift, err := ConvertSpecsToThrift(maps)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(toThrift)
+	toThrift1, err := ConvertSpecsToThrift(maps)
+	s1 := string(toThrift1["fg_v2_infrastructure_controller_docs_swagger/fg_v2_infrastructure_controller_docs_swagger.thrift"])
+	s := string(toThrift["fg_v2_infrastructure_controller_docs_swagger/fg_v2_infrastructure_controller_docs_swagger.thrift"])
+	assert.Equal(t, s, s1)
 }
 
 func writeFiles(outputDir string, generatedFiles map[string][]byte) {

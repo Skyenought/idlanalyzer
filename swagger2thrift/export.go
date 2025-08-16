@@ -2,6 +2,7 @@ package swagger2thrift
 
 import (
 	"fmt"
+
 	"github.com/Skyenought/idlanalyzer/thriftwriter"
 )
 
