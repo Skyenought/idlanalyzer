@@ -19,9 +19,9 @@ func TestConvertOpenAPIToIDLSchema(t *testing.T) {
 }
 
 func TestConvertSpecsToThrift(t *testing.T) {
-	file, _ := os.ReadFile("testdata/plm-web_idl_swagger.json")
+	file, _ := os.ReadFile("testdata/docs_swagger_3.json")
 	maps := make(map[string][]byte)
-	maps["testdata/plm-web_idl_swagger.json"] = file
+	maps["testdata/docs_swagger_3.json"] = file
 	toThrift, err := ConvertSpecsToThrift(maps)
 	if err != nil {
 		panic(err)

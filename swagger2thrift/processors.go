@@ -165,6 +165,9 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
 			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV3(op.Responses, baseFuncName)
+			if returnType.IsPrimitive {
+				continue
+			}
 			service, baseFuncName, reqName := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, returnType.Name)
 
 			defs := c.getOrCreateDefs(c.getMainThriftFileName())
@@ -242,6 +245,9 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
 			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV2(op.Responses, baseFuncName)
+			if returnType.IsPrimitive {
+				continue
+			}
 			service, baseFuncName, reqName := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, returnType.Name)
 
 			defs := c.getOrCreateDefs(c.getMainThriftFileName())
