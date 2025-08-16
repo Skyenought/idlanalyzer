@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/Skyenought/idlanalyzer/idl_ast"
+	"github.com/mozillazg/go-pinyin"
 )
 
 // toPascalCase converts a string to PascalCase.
@@ -30,12 +31,49 @@ func toPascalCase(s string) string {
 	return result.String()
 }
 
-// sanitizeName removes consecutively repeated words from a PascalCase string.
-func sanitizeName(name string) string {
-	re := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
-	parts := re.FindAllString(name, -1)
+// sanitizeAndTransliterateName converts a string into a valid Thrift identifier.
+// It handles Chinese characters by converting them to Pinyin, removes invalid symbols,
+// and de-duplicates repeated words in the resulting PascalCase name.
+func sanitizeAndTransliterateName(name string) string {
+	// Use a regex to find contiguous blocks of Chinese characters.
+	hanRegex := regexp.MustCompile(`[\p{Han}]+`)
+	pArgs := pinyin.NewArgs()
+
+	// Replace each block of Chinese characters with its PascalCase Pinyin representation.
+	processedName := hanRegex.ReplaceAllStringFunc(name, func(s string) string {
+		pinyinSlice := pinyin.LazyPinyin(s, pArgs)
+		var pinyinBuilder strings.Builder
+		for _, p := range pinyinSlice {
+			// Capitalize the first letter of each pinyin syllable.
+			if len(p) > 0 {
+				pinyinBuilder.WriteString(strings.ToUpper(p[:1]) + p[1:])
+			}
+		}
+		return pinyinBuilder.String()
+	})
+
+	// Sanitize the result to create a valid PascalCase identifier.
+	var result strings.Builder
+	capitalizeNext := true
+	for _, r := range processedName {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			capitalizeNext = true
+			continue
+		}
+		if capitalizeNext {
+			result.WriteRune(unicode.ToUpper(r))
+			capitalizeNext = false
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	finalName := result.String()
+
+	// De-duplicate consecutively repeated words (e.g., "GetUserUser" becomes "GetUser").
+	dedupRegex := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
+	parts := dedupRegex.FindAllString(finalName, -1)
 	if len(parts) <= 1 {
-		return name
+		return finalName
 	}
 
 	var cleanParts []string
@@ -151,4 +189,26 @@ func toLowerCamelCase(s string) string {
 func (c *Converter) getOutputDirPrefix() string {
 	base := filepath.Base(c.filePath)
 	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+// sanitizeName removes consecutively repeated words from a PascalCase string.
+func sanitizeName(name string) string {
+	re := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
+	parts := re.FindAllString(name, -1)
+	if len(parts) <= 1 {
+		return name
+	}
+
+	var cleanParts []string
+	if len(parts) > 0 {
+		cleanParts = append(cleanParts, parts[0])
+	}
+
+	for i := 1; i < len(parts); i++ {
+		if parts[i] != parts[i-1] {
+			cleanParts = append(cleanParts, parts[i])
+		}
+	}
+
+	return strings.Join(cleanParts, "")
 }

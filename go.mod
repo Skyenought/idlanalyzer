@@ -5,9 +5,11 @@ go 1.22.0
 require (
 	github.com/jhump/protoreflect v1.17.0
 	github.com/joyme123/thrift-ls v0.2.9
+	github.com/mozillazg/go-pinyin v0.21.0
 	github.com/stretchr/testify v1.10.0
 	go.lsp.dev/uri v0.3.0
 	google.golang.org/protobuf v1.34.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -27,5 +29,4 @@ require (
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

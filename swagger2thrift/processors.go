@@ -47,7 +47,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 	for _, name := range schemaNames {
 		schema := schemas[name]
 
-		namespace, shortName := splitDefinitionName(name)
+		namespace, originalShortName := splitDefinitionName(name)
+		shortName := sanitizeAndTransliterateName(originalShortName)
 
 		var fileName string
 		outputDir := c.getOutputDirPrefix() // 获取共同的输出目录, e.g., "docs_swagger"
@@ -96,14 +97,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				})
 			}
 			defs.Enums = append(defs.Enums, enum)
-		} else if isTypedefCandidate(schema) {
-			typedef := idl_ast.Typedef{
-				Alias:    shortName,
-				Type:     *c.convertSchemaToType(schema, namespace, "", ""),
-				Comments: descriptionToComments(schema.Description),
-			}
-			defs.Typedefs = append(defs.Typedefs, typedef)
-		} else {
+		} else if !isTypedefCandidate(schema) {
+			// Only process schemas that are not simple aliases; these are treated as structs.
 			message := idl_ast.Message{
 				Name:               shortName,
 				FullyQualifiedName: fqn,
@@ -539,12 +534,12 @@ func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFun
 		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
-	return *c.convertSchemaToType(bestSchema, "main", baseFuncName, "Response")
+	// 将用于生成内联响应结构体的名称后缀从 "Response" 改为 "Resp"
+	return *c.convertSchemaToType(bestSchema, "main", baseFuncName, "Resp")
 }
 
 func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, baseFuncName string) idl_ast.Type {
 	if responses == nil {
-		// 修改点：不再返回 void，而是创建空的 Response struct
 		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
@@ -572,7 +567,8 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 		return c.createEmptyResponseStruct(baseFuncName)
 	}
 
-	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Response")
+	// 将用于生成内联响应结构体的名称后缀从 "Response" 改为 "Resp"
+	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Resp")
 }
 
 func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path, responseTypeName string) (idl_ast.Service, string, string) {
@@ -700,11 +696,12 @@ func getFunctionName(opID, method, path, responseTypeName string) string {
 	funcName := toPascalCase(method) + toPascalCase(baseName)
 
 	// 清理最终生成的名称，移除重复的词汇
-	return sanitizeName(funcName)
+	return sanitizeAndTransliterateName(funcName)
 }
 
 func (c *Converter) createEmptyResponseStruct(baseFuncName string) idl_ast.Type {
-	respName := baseFuncName + "EmptyResponse"
+	// 将响应结构体的名称后缀从 "EmptyResponse" 改为 "Resp"
+	respName := baseFuncName + "Resp"
 	defs := c.getOrCreateDefs(c.getMainThriftFileName())
 
 	for _, msg := range defs.Messages {

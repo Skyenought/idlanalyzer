@@ -136,26 +136,30 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 	// 1. 最高优先级：处理引用。如果 schema 是一个引用，直接返回引用名，不再进行任何内部解析。
 	//    这是为了确保全局定义（如 enum, struct）只由 processSchemas 处理一次。
 	if schema.Ref != "" {
-		refFullName := ""
+		refOriginalFullName := ""
 		if strings.HasPrefix(schema.Ref, "#/components/schemas/") {
-			refFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+			refOriginalFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
 		} else if strings.HasPrefix(schema.Ref, "#/definitions/") {
-			refFullName = strings.TrimPrefix(schema.Ref, "#/definitions/")
+			refOriginalFullName = strings.TrimPrefix(schema.Ref, "#/definitions/")
+		} else {
+			// Fallback for simple references like "$ref": "MyType"
+			refOriginalFullName = schema.Ref
 		}
 
-		refNamespace, refShortName := splitDefinitionName(refFullName)
-		finalName := refFullName
+		refNamespace, refOriginalShortName := splitDefinitionName(refOriginalFullName)
+		sanitizedShortName := sanitizeAndTransliterateName(refOriginalShortName)
 
-		if refNamespace != parentNamespace && refNamespace != "main" {
-			finalName = refNamespace + "." + refShortName
+		var finalName string
+		if refNamespace != "main" {
+			finalName = refNamespace + "." + sanitizedShortName
 		} else {
-			finalName = refShortName
+			finalName = sanitizedShortName
 		}
 
 		return &idl_ast.Type{
 			Name:               finalName,
 			IsPrimitive:        false,
-			FullyQualifiedName: fmt.Sprintf("%s#%s", c.filePath, refFullName),
+			FullyQualifiedName: fmt.Sprintf("%s#%s", c.filePath, refOriginalFullName),
 		}
 	}
 
@@ -172,7 +176,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 	// 3. 处理内联（匿名）的整型枚举。这段逻辑现在只会在 schema 没有 $ref 时执行。
 	if len(schema.Enum) > 0 && schema.Type == "integer" {
 		if parentName != "" && fieldName != "" {
-			enumName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
+			enumName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
 			var targetFileName string
 			outputDir := c.getOutputDirPrefix()
 			if parentNamespace == "main" {
@@ -287,7 +291,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 			}
 		}
 		if len(schema.Properties) > 0 {
-			newStructName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
+			newStructName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
 			var targetFileName string
 			outputDir := c.getOutputDirPrefix()
 			if parentNamespace == "main" {
