@@ -80,7 +80,7 @@ type Schema struct {
 	Items                *Schema            `yaml:"items"`
 	Enum                 []any              `yaml:"enum"`
 	Default              any                `yaml:"default"`
-	AdditionalProperties *Schema            `yaml:"additionalProperties"`
+	AdditionalProperties any                `yaml:"additionalProperties"`
 	AllOf                []*Schema          `yaml:"allOf"` // 新增 AllOf 字段
 }
 

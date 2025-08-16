@@ -196,23 +196,54 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 			ValueType: c.convertSchemaToType(schema.Items, currentFileNamespace, parentName, itemName),
 		}
 	case "object", "":
+		// MODIFICATION START: Handle flexible 'additionalProperties' type
 		if schema.AdditionalProperties != nil {
-			apSchema := schema.AdditionalProperties
-			isAnyType := apSchema.Type == "" && apSchema.Ref == "" && len(apSchema.Properties) == 0 && apSchema.AdditionalProperties == nil
-			if isAnyType {
+			var apSchema *Schema
+
+			switch ap := schema.AdditionalProperties.(type) {
+			case bool:
+				// If 'true', it means any additional properties are allowed.
+				// This is semantically equivalent to an empty schema `{}`.
+				// We can represent this as map<string, string> in Thrift.
+				if ap {
+					return &idl_ast.Type{
+						Name:      "map",
+						KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
+						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true}, // Default to string value for 'any' type
+					}
+				}
+				// If 'false', no additional properties allowed. We fall through and treat it as a normal struct.
+			case map[string]any:
+				// It's a schema object defined inline. We need to convert this map back into a Schema struct.
+				// A common trick is to re-marshal and unmarshal it.
+				tempSchema := &Schema{}
+				yamlBytes, err := yaml.Marshal(ap)
+				if err == nil {
+					if yaml.Unmarshal(yamlBytes, tempSchema) == nil {
+						apSchema = tempSchema
+					}
+				}
+			}
+
+			if apSchema != nil {
+				// Check if the schema is empty `{}`, which also means "any type"
+				isAnyType := apSchema.Type == "" && apSchema.Ref == "" && len(apSchema.Properties) == 0 && apSchema.AdditionalProperties == nil
+				if isAnyType {
+					return &idl_ast.Type{
+						Name:      "map",
+						KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
+						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
+					}
+				}
+
+				// If it's a specific schema, process it recursively.
 				return &idl_ast.Type{
 					Name:      "map",
 					KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-					ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
+					ValueType: c.convertSchemaToType(apSchema, currentFileNamespace, parentName, fieldName+"Value"),
 				}
 			}
-			return &idl_ast.Type{
-				Name:      "map",
-				KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-				ValueType: c.convertSchemaToType(apSchema, currentFileNamespace, parentName, fieldName+"Value"),
-			}
 		}
-
 		if len(schema.Properties) > 0 {
 			newStructName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
 			mainDefs := c.getOrCreateDefs(c.getMainThriftFileName())

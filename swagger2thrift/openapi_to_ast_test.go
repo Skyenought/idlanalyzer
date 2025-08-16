@@ -17,10 +17,10 @@ func TestConvertOpenAPIToIDLSchema(t *testing.T) {
 	writeFiles("testdata/thrifts", thrift)
 }
 
-func ExampleConvertSpecsToThrift() {
-	file, _ := os.ReadFile("docs_swagger.yaml")
+func TestConvertSpecsToThrift(t *testing.T) {
+	file, _ := os.ReadFile("testdata/fg_v2_infrastructure_controller_docs_swagger.json")
 	maps := make(map[string][]byte)
-	maps["docs_swagger.yaml"] = file
+	maps["testdata/fg_v2_infrastructure_controller_docs_swagger.json"] = file
 	toThrift, err := ConvertSpecsToThrift(maps)
 	if err != nil {
 		panic(err)
