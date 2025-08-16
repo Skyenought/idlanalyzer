@@ -288,7 +288,7 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 
 			// 并且总是为函数添加参数
 			function.Parameters = []idl_ast.Field{
-				{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
+				{ID: 1, Name: "req", Type: idl_ast.Type{Name: reqName}},
 			}
 
 			servicePtr.Functions = append(servicePtr.Functions, function)
