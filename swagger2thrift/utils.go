@@ -113,9 +113,14 @@ func createParameterAnnotation(in, name string) *idl_ast.Annotation {
 		return nil
 	}
 
+	annotationValue := name
+	if lastDot := strings.LastIndex(name, "."); lastDot != -1 {
+		annotationValue = name[lastDot+1:]
+	}
+
 	return &idl_ast.Annotation{
 		Name:  annotationName,
-		Value: &idl_ast.ConstantValue{Value: strconv.Quote(name)},
+		Value: &idl_ast.ConstantValue{Value: strconv.Quote(annotationValue)},
 	}
 }
 

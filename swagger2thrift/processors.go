@@ -413,6 +413,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 	currentNamespace := "main"
 
 	for _, param := range params {
+
 		if param.In == "body" && param.Schema != nil && param.Schema.Ref == "" && (param.Schema.Type == "object" || param.Schema.Type == "") {
 			requiredMap := make(map[string]bool)
 			for _, reqField := range param.Schema.Required {
