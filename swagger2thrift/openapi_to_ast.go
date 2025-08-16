@@ -2,6 +2,7 @@ package swagger2thrift
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -127,25 +128,33 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	return finalSchema
 }
 
-func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, parentName, fieldName string) *idl_ast.Type {
+func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentName, fieldName string) *idl_ast.Type {
 	if schema == nil {
 		return &idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// First, check for allOf and flatten it
+	// 在处理 allOf 之前，增加一个特殊情况的判断。
+	// 很多 Swagger/OpenAPI 文件使用 `allOf` + 单个 `$ref` 的方式来包装一个已有的类型，
+	// 比如在通用响应体结构中嵌入具体的数据模型。
+	// 如果不特殊处理，`flattenAllOf`会把已有的模型“压平”，导致丢失其原始名称，从而被当作内联对象重新生成，造成重复定义。
+	// 这里的逻辑是：如果 allOf 中只有一个元素，且该元素是 $ref，那么我们就直接处理这个 $ref，而不是压平它。
+	if len(schema.AllOf) == 1 && schema.AllOf[0].Ref != "" {
+		// 直接将这个 schema 视为对 `allOf` 内部那个 $ref 的引用，然后递归调用自身进行处理。
+		// 这样就能走到下面的 `if schema.Ref != ""` 分支，并正确地使用已有的类型名称。
+		return c.convertSchemaToType(schema.AllOf[0], parentNamespace, parentName, fieldName)
+	}
+
+	// 对于包含多个元素或不含 $ref 的复杂 `allOf`，我们仍然使用原来的压平逻辑。
 	if len(schema.AllOf) > 0 {
 		schema = c.flattenAllOf(schema.AllOf)
 	}
 
 	if schema.Ref != "" {
 		resolvedSchema := c.resolveSchema(schema.Ref)
-		// If the resolved schema is a simple type alias (a candidate for a typedef),
-		// "flatten" it by converting its underlying type directly instead of using the alias name.
 		if resolvedSchema != nil && isTypedefCandidate(resolvedSchema) {
-			return c.convertSchemaToType(resolvedSchema, currentFileNamespace, parentName, fieldName)
+			return c.convertSchemaToType(resolvedSchema, parentNamespace, parentName, fieldName)
 		}
 
-		// Original logic for complex structs and other non-flattenable types
 		refFullName := ""
 		if strings.HasPrefix(schema.Ref, "#/components/schemas/") {
 			refFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
@@ -156,9 +165,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 		refNamespace, refShortName := splitDefinitionName(refFullName)
 		finalName := refFullName
 
-		if refNamespace == currentFileNamespace {
-			finalName = refShortName
-		} else if refNamespace != "main" {
+		if refNamespace != parentNamespace && refNamespace != "main" {
 			finalName = refNamespace + "." + refShortName
 		} else {
 			finalName = refShortName
@@ -193,29 +200,21 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 		}
 		return &idl_ast.Type{
 			Name:      "list",
-			ValueType: c.convertSchemaToType(schema.Items, currentFileNamespace, parentName, itemName),
+			ValueType: c.convertSchemaToType(schema.Items, parentNamespace, parentName, itemName),
 		}
 	case "object", "":
-		// MODIFICATION START: Handle flexible 'additionalProperties' type
 		if schema.AdditionalProperties != nil {
 			var apSchema *Schema
-
 			switch ap := schema.AdditionalProperties.(type) {
 			case bool:
-				// If 'true', it means any additional properties are allowed.
-				// This is semantically equivalent to an empty schema `{}`.
-				// We can represent this as map<string, string> in Thrift.
 				if ap {
 					return &idl_ast.Type{
 						Name:      "map",
 						KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true}, // Default to string value for 'any' type
+						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
 					}
 				}
-				// If 'false', no additional properties allowed. We fall through and treat it as a normal struct.
 			case map[string]any:
-				// It's a schema object defined inline. We need to convert this map back into a Schema struct.
-				// A common trick is to re-marshal and unmarshal it.
 				tempSchema := &Schema{}
 				yamlBytes, err := yaml.Marshal(ap)
 				if err == nil {
@@ -226,7 +225,6 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 			}
 
 			if apSchema != nil {
-				// Check if the schema is empty `{}`, which also means "any type"
 				isAnyType := apSchema.Type == "" && apSchema.Ref == "" && len(apSchema.Properties) == 0 && apSchema.AdditionalProperties == nil
 				if isAnyType {
 					return &idl_ast.Type{
@@ -235,20 +233,25 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
 					}
 				}
-
-				// If it's a specific schema, process it recursively.
 				return &idl_ast.Type{
 					Name:      "map",
 					KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-					ValueType: c.convertSchemaToType(apSchema, currentFileNamespace, parentName, fieldName+"Value"),
+					ValueType: c.convertSchemaToType(apSchema, parentNamespace, parentName, fieldName+"Value"),
 				}
 			}
 		}
 		if len(schema.Properties) > 0 {
 			newStructName := sanitizeName(toPascalCase(parentName) + toPascalCase(fieldName))
-			mainDefs := c.getOrCreateDefs(c.getMainThriftFileName())
+			var targetFileName string
+			outputDir := c.getOutputDirPrefix()
+			if parentNamespace == "main" {
+				targetFileName = c.getMainThriftFileName()
+			} else {
+				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
+			}
+			defs := c.getOrCreateDefs(targetFileName)
 
-			for _, msg := range mainDefs.Messages {
+			for _, msg := range defs.Messages {
 				if msg.Name == newStructName {
 					return &idl_ast.Type{Name: newStructName, IsPrimitive: false}
 				}
@@ -256,7 +259,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 
 			newMessage := idl_ast.Message{
 				Name:               newStructName,
-				FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), newStructName),
+				FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, newStructName),
 				Type:               "struct",
 				Comments:           descriptionToComments(schema.Description),
 			}
@@ -281,13 +284,13 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 				field := idl_ast.Field{
 					ID:       i + 1,
 					Name:     propName,
-					Type:     *c.convertSchemaToType(propSchema, currentFileNamespace, newStructName, propName),
+					Type:     *c.convertSchemaToType(propSchema, parentNamespace, newStructName, propName),
 					Required: required,
 					Comments: descriptionToComments(propSchema.Description),
 				}
 				newMessage.Fields = append(newMessage.Fields, field)
 			}
-			mainDefs.Messages = append(mainDefs.Messages, newMessage)
+			defs.Messages = append(defs.Messages, newMessage)
 			return &idl_ast.Type{Name: newStructName, IsPrimitive: false}
 		}
 

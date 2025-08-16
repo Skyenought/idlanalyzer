@@ -57,7 +57,6 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 		} else {
 			fileName = filepath.Join(outputDir, namespace+".thrift") // "docs_swagger/payload.thrift"
 		}
-		// --------------------
 
 		defs := c.getOrCreateDefs(fileName)
 		fqn := fmt.Sprintf("%s#%s", fileName, shortName)
@@ -68,10 +67,32 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				FullyQualifiedName: fqn,
 				Comments:           descriptionToComments(schema.Description),
 			}
+
+			// 检查 x-enum-varnames 是否存在且与 enum 列表长度匹配
+			useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
+
 			for i, val := range schema.Enum {
+				var memberName string
+				if useVarNames {
+					// 正确做法：使用 x-enum-varnames 中提供的名称
+					memberName = schema.XEnumVarNames[i]
+				} else {
+					memberName = fmt.Sprintf("%s_%v", toPascalCase(shortName), val)
+				}
+
+				// 将 enum 的值转换为整数
+				intValue, ok := val.(int)
+				if !ok {
+					if floatVal, isFloat := val.(float64); isFloat {
+						intValue = int(floatVal)
+					} else {
+						intValue = i
+					}
+				}
+
 				enum.Values = append(enum.Values, idl_ast.EnumValue{
-					Name:  fmt.Sprintf("%v", val),
-					Value: i,
+					Name:  memberName,
+					Value: intValue,
 				})
 			}
 			defs.Enums = append(defs.Enums, enum)

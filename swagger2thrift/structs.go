@@ -81,7 +81,8 @@ type Schema struct {
 	Enum                 []any              `yaml:"enum"`
 	Default              any                `yaml:"default"`
 	AdditionalProperties any                `yaml:"additionalProperties"`
-	AllOf                []*Schema          `yaml:"allOf"` // 新增 AllOf 字段
+	XEnumVarNames        []string           `yaml:"x-enum-varnames"`
+	AllOf                []*Schema          `yaml:"allOf"`
 }
 
 // SwaggerSpec represents the root of a Swagger 2.0 document.
