@@ -2,6 +2,7 @@ package thriftwriter
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Skyenought/idlanalyzer/idl_ast"
@@ -48,9 +49,17 @@ type thriftWriter struct {
 	indentationLevel int
 	indentStr        string
 	opts             *Options
+	includeBasenames map[string]struct{}
 }
 
 func (w *thriftWriter) writeFileContent(file *idl_ast.File) {
+	w.includeBasenames = make(map[string]struct{})
+	for _, imp := range file.Imports {
+		base := filepath.Base(imp.Path)
+		name := strings.TrimSuffix(base, filepath.Ext(base))
+		w.includeBasenames[name] = struct{}{}
+	}
+
 	w.writeNamespaces(file.Namespaces)
 	w.writeImports(file.Imports)
 	w.writeDefinitions(&file.Definitions)
@@ -313,8 +322,12 @@ func (w *thriftWriter) formatFunction(f *idl_ast.Function) string {
 func (w *thriftWriter) formatParamField(f *idl_ast.Field) string {
 	var parts []string
 	parts = append(parts, fmt.Sprintf("%d:", f.ID))
+	paramName := f.Name
+	if _, ok := w.includeBasenames[paramName]; ok {
+		paramName += "_"
+	}
 	parts = append(parts, w.formatType(&f.Type))
-	parts = append(parts, f.Name)
+	parts = append(parts, paramName)
 	if f.DefaultValue != nil {
 		parts = append(parts, "=", w.formatConstantValue(f.DefaultValue))
 	}

@@ -37,8 +37,10 @@ type RichDependencyGraph struct {
 	EntryPointPath string               `json:"entryPointPath"` // 分析的入口文件
 }
 
-type CyclicDependency []string
-type NamespaceConflict map[string][]string
+type (
+	CyclicDependency  []string
+	NamespaceConflict map[string][]string
+)
 
 type AnalysisResult struct {
 	Cycles    []CyclicDependency
