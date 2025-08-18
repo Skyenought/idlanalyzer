@@ -107,10 +107,7 @@ func (p *ThriftParser) ParseIDLs() (*idl_ast.IDLSchema, error) {
 }
 
 func NewParserFromMap(rootDir string, fileMap map[string][]byte, opts ...Option) (*ThriftParser, error) {
-	// 确保 rootDir 是一个干净的、类似 Unix 的绝对路径格式，以便于 URI 构建
 	if !filepath.IsAbs(rootDir) {
-		// 如果不是绝对路径，我们假设它是相对于根的，并为其添加前缀
-		// 这样做可以避免很多路径问题
 		rootDir = "/" + rootDir
 	}
 	// 清理路径，例如将 "a//b" 变为 "a/b"
@@ -131,8 +128,6 @@ func NewParserFromMap(rootDir string, fileMap map[string][]byte, opts ...Option)
 		opts:        defaultOptions,
 	}
 
-	// 调用基于 map 的快照构建函数
-	// 将 "name" 参数也设置为 rootDir
 	snapshot, files, err := t.buildSnapshotWithMap(rootDir, fileMap)
 	if err != nil {
 		return nil, err
