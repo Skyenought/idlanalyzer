@@ -19,6 +19,15 @@ enum Status {
   ERROR = 1
 }
 
+
+
+
+// sayHello 方法的请求体
+struct HelloRequest {
+  1: required string       name,
+  2: optional UserProfile profile,
+}
+
 /**
  * 结构体（Struct）是 Thrift 中的基本构建块。
  * 它们本质上等同于类，但是没有继承。
@@ -30,11 +39,6 @@ struct UserProfile {
   4: map<string,string> attributes,
 }
 
-// sayHello 方法的请求体
-struct HelloRequest {
-  1: required string       name,
-  2: optional UserProfile profile,
-}
 
 // sayHello 方法的响应体
 struct HelloResponse {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestWriter(t *testing.T) {
-	parser, err := thriftparser.NewParser("../thriftparser/testdata/thrifts")
+	parser, err := thriftparser.NewParser("../thriftparser/testdata/thrifts", thriftparser.WithSortDefinitions(true))
 	if err != nil {
 		panic(err)
 	}
@@ -20,7 +20,7 @@ func TestWriter(t *testing.T) {
 	}
 
 	// 2. 调用 Generate 函数
-	generatedFiles, err := Generate(schema, WithNoComments(true))
+	generatedFiles, err := Generate(schema, WithNoComments(false))
 	if err != nil {
 		panic(err)
 	}
