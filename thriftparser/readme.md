@@ -13,6 +13,7 @@
 -   **元数据保留**: 可以配置保留源代码中的重要信息：
     -   **注释**: 将文档和行内注释与它们所描述的 AST 节点关联起来。
     -   **代码位置**: 记录每个语法元素在源文件中的精确位置（行、列、偏移），为高级分析和代码重写工具提供基础。
+-   **定义拓扑排序**: 提供 `WithSortDefinitions(true)` 选项，可对每个文件内的所有定义（`struct`, `enum`, `typedef` 等）进行拓扑排序。这确保了任何定义都会在使用它的其他定义之前被声明，对于依赖顺序敏感的代码生成或分析工具至关重要。
 -   **灵活的数据源**:
     -   `NewParser(rootDir)`: 从文件系统目录中自动发现并解析所有 `.thrift` 文件。
     -   `NewParserFromMap(fileMap)`: 从内存中的文件 map 进行解析，非常适合在无文件系统的环境（如测试或在线服务）中使用。
@@ -23,6 +24,7 @@
 典型的使用流程是：创建一个 `ThriftParser` 实例，调用其 `ParseIDLs()` 方法，然后对返回的 `IDLSchema` 对象进行后续处理。
 
 ### 示例代码
+
 ```go
 package main
 
@@ -49,8 +51,49 @@ func main() {
 
 	// 示例：打印第一个文件中的服务数量
 	if len(schema.Files) > 0 {
-		firstFile := schema.Files
+		firstFile := schema.Files[0]
 		fmt.Printf("文件 '%s' 中包含 %d 个服务定义。\n", firstFile.Path, len(firstFile.Definitions.Services))
 	}
 }
 ```
+
+### 使用功能选项
+
+通过在创建解析器时传入一个或多个选项函数，可以对其行为进行定制。
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/Skyenought/idlanalyzer/thriftparser"
+)
+
+func main() {
+	// 创建解析器时传入功能选项
+	// 这里我们启用了定义排序，并移除了代码位置信息
+	parser, err := thriftparser.NewParser(
+		"path/to/your/thrifts",
+		thriftparser.WithSortDefinitions(true), // 启用定义排序
+		thriftparser.WithNoLocation(true),      // 移除 AST 中的位置信息
+	)
+	if err != nil {
+		panic(fmt.Sprintf("创建解析器失败: %v", err))
+	}
+
+	schema, err := parser.ParseIDLs()
+	if err != nil {
+		panic(fmt.Sprintf("解析 IDL 失败: %v", err))
+	}
+    
+    // 此时，schema 中每个文件的 Definitions 都会按依赖顺序排列
+	fmt.Println("解析并排序完成！")
+}
+```
+
+**可用的主要选项包括：**
+
+*   `WithSortDefinitions(bool)`: 当设置为 `true` 时，每个文件内的 `struct`, `enum`, `typedef` 等定义将根据依赖关系进行拓扑排序。
+*   `WithNoComments(bool)`: 当设置为 `true` 时，最终的 AST 中将不包含任何注释信息。
+*   `WithNoLocation(bool)`: 当设置为 `true` 时，最终的 AST 中将不包含任何源代码位置信息（`Location` 字段将为 `nil`）。

@@ -11,8 +11,9 @@ import (
 )
 
 type Options struct {
-	NoLocation bool
-	NoComments bool
+	NoLocation      bool
+	NoComments      bool
+	SortDefinitions bool // 新增选项，用于控制定义排序
 }
 
 type Option func(*Options)
@@ -26,6 +27,14 @@ func WithNoLocation(noLocation bool) Option {
 func WithNoComments(noComments bool) Option {
 	return func(o *Options) {
 		o.NoComments = noComments
+	}
+}
+
+// WithSortDefinitions 启用或禁用对每个文件内定义的拓扑排序。
+// 当为 true 时，定义将被排序，以确保依赖项出现在使用它们的项之前。
+func WithSortDefinitions(sort bool) Option {
+	return func(o *Options) {
+		o.SortDefinitions = sort
 	}
 }
 
@@ -47,8 +56,9 @@ func NewParser(rootDir string, opts ...Option) (tt *ThriftParser, err error) {
 		}
 	}
 	defaultOptions := &Options{
-		NoLocation: false,
-		NoComments: false,
+		NoLocation:      false,
+		NoComments:      false,
+		SortDefinitions: false,
 	}
 
 	for _, opt := range opts {
@@ -98,6 +108,10 @@ func (p *ThriftParser) ParseIDLs() (*idl_ast.IDLSchema, error) {
 		}
 	}
 
+	if p.opts.SortDefinitions {
+		SortSchema(schema)
+	}
+
 	if p.opts.NoLocation {
 		removeLocationsInSchema(schema)
 	}
@@ -114,8 +128,9 @@ func NewParserFromMap(rootDir string, fileMap map[string][]byte, opts ...Option)
 	rootDir = filepath.Clean(rootDir)
 
 	defaultOptions := &Options{
-		NoLocation: false,
-		NoComments: false,
+		NoLocation:      false,
+		NoComments:      false,
+		SortDefinitions: false, // 默认值为 false
 	}
 	for _, opt := range opts {
 		opt(defaultOptions)
