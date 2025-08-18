@@ -46,16 +46,11 @@ func Test_Check(t *testing.T) {
 }
 
 func loadThriftFilesFromDir(rootDir string) (map[string][]byte, error) {
-	// 首先，确保 rootDir 是一个绝对路径，以保证 map 中的 key 是一致和明确的。
-	absRootDir, err := filepath.Abs(rootDir)
-	if err != nil {
-		return nil, fmt.Errorf("无法获取目录的绝对路径 '%s': %w", rootDir, err)
-	}
 
 	files := make(map[string][]byte)
 
 	// 使用 filepath.WalkDir 进行递归遍历，它比 filepath.Walk 更高效且安全。
-	walkErr := filepath.WalkDir(absRootDir, func(path string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		// 如果 WalkDir 本身遇到错误（例如权限问题），则立即中止并返回该错误。
 		if err != nil {
 			return err

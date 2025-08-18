@@ -117,7 +117,7 @@ func ThriftSyntaxCheck(ctx context.Context, sources map[string][]byte) (map[stri
 ```
 
 -   **`ctx context.Context`**: 用于控制取消操作的上下文。
--   **`sources map[string][]byte`**: 输入的从文件名到文件内容的 `map`。为确保 `include` 能被可靠地解析，文件名应该是绝对路径。
+-   **`sources map[string][]byte`**: 输入的从文件名到文件内容的 `map`。为确保 `include` 能被可靠地解析
 -   **返回 `map[string][]protocol.Diagnostic`**: 一个 `map`，其中每个键都是输入中的文件名，值是在该文件中找到的所有诊断信息的切片。如果一个文件没有问题，其对应的切片将为空。
 -   **返回 `error`**: 一个非 `nil` 的错误表示分析设置过程中出现了严重失败（例如，某个检查器内部出现bug），而不是源文件中的验证错误。
 
