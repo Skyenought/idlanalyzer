@@ -55,7 +55,7 @@ func (c *Converter) assembleSchema(idlType, syntax string) *idl_ast.IDLSchema {
 
 func (c *Converter) calculateImports(currentFilename string, defs *idl_ast.Definitions) []idl_ast.Import {
 	neededNamespaces := make(map[string]struct{})
-	currentFileNamespace := strings.TrimSuffix(currentFilename, ".thrift")
+	currentFileNamespace := strings.TrimSuffix(filepath.Base(currentFilename), ".thrift")
 
 	for _, s := range defs.Services {
 		for _, f := range s.Functions {
