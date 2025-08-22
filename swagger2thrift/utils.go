@@ -67,27 +67,8 @@ func sanitizeAndTransliterateName(name string) string {
 			result.WriteRune(r)
 		}
 	}
-	finalName := result.String()
 
-	// De-duplicate consecutively repeated words (e.g., "GetUserUser" becomes "GetUser").
-	dedupRegex := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
-	parts := dedupRegex.FindAllString(finalName, -1)
-	if len(parts) <= 1 {
-		return finalName
-	}
-
-	var cleanParts []string
-	if len(parts) > 0 {
-		cleanParts = append(cleanParts, parts[0])
-	}
-
-	for i := 1; i < len(parts); i++ {
-		if parts[i] != parts[i-1] {
-			cleanParts = append(cleanParts, parts[i])
-		}
-	}
-
-	return strings.Join(cleanParts, "")
+	return result.String()
 }
 
 // descriptionToComments converts a description string into an AST Comment block.

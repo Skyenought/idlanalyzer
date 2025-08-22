@@ -47,21 +47,26 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 	for _, name := range schemaNames {
 		schema := schemas[name]
 
+		// 1. 统一进行名称处理
 		namespace, originalShortName := splitDefinitionName(name)
+		// 使用您自定义的名称处理函数，确保全局一致性
 		shortName := sanitizeAndTransliterateName(originalShortName)
 
+		// 2. 确定该定义应该属于哪个 thrift 文件
 		var fileName string
-		outputDir := c.getOutputDirPrefix() // 获取共同的输出目录, e.g., "docs_swagger"
-
+		outputDir := c.getOutputDirPrefix()
 		if namespace == "main" {
-			fileName = c.getMainThriftFileName() // "docs_swagger/docs_swagger.thrift"
+			fileName = c.getMainThriftFileName()
 		} else {
-			fileName = filepath.Join(outputDir, namespace+".thrift") // "docs_swagger/payload.thrift"
+			fileName = filepath.Join(outputDir, namespace+".thrift")
 		}
 
+		// 获取目标文件的定义列表
 		defs := c.getOrCreateDefs(fileName)
+		// 生成完全限定名 (FQN)
 		fqn := fmt.Sprintf("%s#%s", fileName, shortName)
 
+		// 3. 根据 schema 的特征，将其分派到正确的生成逻辑
 		if len(schema.Enum) > 0 {
 			enum := idl_ast.Enum{
 				Name:               shortName,
@@ -69,25 +74,22 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				Comments:           descriptionToComments(schema.Description),
 			}
 
-			// 检查 x-enum-varnames 是否存在且与 enum 列表长度匹配
 			useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
-
 			for i, val := range schema.Enum {
 				var memberName string
 				if useVarNames {
-					// 正确做法：使用 x-enum-varnames 中提供的名称
 					memberName = schema.XEnumVarNames[i]
 				} else {
 					memberName = fmt.Sprintf("%s_%v", toPascalCase(shortName), val)
 				}
 
-				// 将 enum 的值转换为整数
+				// 确保值为整数
 				intValue, ok := val.(int)
 				if !ok {
 					if floatVal, isFloat := val.(float64); isFloat {
 						intValue = int(floatVal)
 					} else {
-						intValue = i
+						intValue = i // 回退到使用索引作为值
 					}
 				}
 
@@ -97,26 +99,44 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				})
 			}
 			defs.Enums = append(defs.Enums, enum)
-		} else if !isTypedefCandidate(schema) {
-			// Only process schemas that are not simple aliases; these are treated as structs.
+
+		} else if isTypedefCandidate(schema) {
+			typedef := idl_ast.Typedef{
+				Alias:    shortName,
+				Type:     *c.convertSchemaToType(schema, namespace, "", ""),
+				Comments: descriptionToComments(schema.Description),
+			}
+			defs.Typedefs = append(defs.Typedefs, typedef)
+
+		} else {
+			// 如果不是 enum 也不是 typedef，那么它就是一个 message (struct)
 			message := idl_ast.Message{
 				Name:               shortName,
 				FullyQualifiedName: fqn,
-				Type:               "struct",
+				Type:               "struct", // 默认为 struct
 				Comments:           descriptionToComments(schema.Description),
 			}
+
+			// 如果有 allOf，先将其扁平化
+			finalSchema := schema
+			if len(schema.AllOf) > 0 {
+				finalSchema = c.flattenAllOf(schema.AllOf)
+			}
+
 			requiredMap := make(map[string]bool)
-			for _, fieldName := range schema.Required {
+			for _, fieldName := range finalSchema.Required {
 				requiredMap[fieldName] = true
 			}
-			propNames := make([]string, 0, len(schema.Properties))
-			for propName := range schema.Properties {
+
+			propNames := make([]string, 0, len(finalSchema.Properties))
+			for propName := range finalSchema.Properties {
 				propNames = append(propNames, propName)
 			}
 			sort.Strings(propNames)
+
 			fieldID := 1
 			for _, propName := range propNames {
-				propSchema := schema.Properties[propName]
+				propSchema := finalSchema.Properties[propName]
 				required := "optional"
 				if requiredMap[propName] {
 					required = "required"
@@ -505,15 +525,14 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 
 func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFuncName string) idl_ast.Type {
 	if responses == nil {
-		return c.createEmptyResponseStruct(baseFuncName)
+		return idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
 	var bestSchema *Schema
-	if resp, ok := responses["200"]; ok {
-		if resp.Content != nil {
-			if mediaType, ok := resp.Content["application/json"]; ok {
-				bestSchema = mediaType.Schema
-			}
+
+	if resp, ok := responses["200"]; ok && resp.Content != nil {
+		if mediaType, ok := resp.Content["application/json"]; ok {
+			bestSchema = mediaType.Schema
 		}
 	}
 
@@ -525,9 +544,9 @@ func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFun
 		sort.Strings(sortedCodes)
 
 		for _, code := range sortedCodes {
-			if strings.HasPrefix(code, "2") {
+			if strings.HasPrefix(code, "2") { // 查找所有 2xx 状态码
 				if resp := responses[code]; resp.Content != nil {
-					if mediaType, ok := resp.Content["application/json"]; ok {
+					if mediaType, ok := resp.Content["application/json"]; ok && mediaType.Schema != nil {
 						bestSchema = mediaType.Schema
 						break
 					}
@@ -537,11 +556,32 @@ func (c *Converter) findBestReturnTypeV3(responses map[string]*Response, baseFun
 	}
 
 	if bestSchema == nil {
-		return c.createEmptyResponseStruct(baseFuncName)
+		return idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// 将用于生成内联响应结构体的名称后缀从 "Response" 改为 "Resp"
-	return *c.convertSchemaToType(bestSchema, "main", baseFuncName, "Resp")
+	responseSchema := bestSchema
+
+	if responseSchema.Ref != "" {
+		resolved := c.resolveSchema(responseSchema.Ref)
+		if resolved != nil {
+			responseSchema = resolved
+		}
+	}
+
+	if responseSchema.Type == "object" && responseSchema.Properties != nil {
+		var dataSchema *Schema
+		if dataProp, ok := responseSchema.Properties["Data"]; ok { // 兼容大写的 "Data"
+			dataSchema = dataProp
+		} else if dataProp, ok := responseSchema.Properties["data"]; ok {
+			dataSchema = dataProp
+		}
+
+		if dataSchema != nil && dataSchema.Ref != "" {
+			return *c.convertSchemaToType(dataSchema, "main", baseFuncName, "Response")
+		}
+	}
+
+	return *c.convertSchemaToType(bestSchema, "main", baseFuncName, "Response")
 }
 
 func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, baseFuncName string) idl_ast.Type {
@@ -561,7 +601,7 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 
 		for _, code := range sortedCodes {
 			if strings.HasPrefix(code, "2") {
-				if resp, ok := responses[code]; ok {
+				if resp := responses[code]; resp.Schema != nil {
 					bestResp = resp
 					break
 				}
@@ -570,11 +610,43 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 	}
 
 	if bestResp == nil || bestResp.Schema == nil {
-		return c.createEmptyResponseStruct(baseFuncName)
+		return idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// 将用于生成内联响应结构体的名称后缀从 "Response" 改为 "Resp"
-	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Resp")
+	// --- 最终修复：智能解包并返回正确的引用 ---
+
+	// 1. 获取顶层响应的 Schema
+	responseSchema := bestResp.Schema
+
+	// 2. 如果顶层响应本身就是一个引用（例如 $ref: '#/definitions/api.ArchonMetaMetaSwagger'），
+	//    就解析这个引用，拿到它指向的真实 Schema 定义。
+	if responseSchema.Ref != "" {
+		resolved := c.resolveSchema(responseSchema.Ref)
+		if resolved != nil {
+			responseSchema = resolved
+		}
+	}
+
+	// 3. 检查解析后的 Schema 是否是一个包含 "data" 或 "Data" 字段的包装器。
+	if responseSchema.Type == "object" && responseSchema.Properties != nil {
+		var dataSchema *Schema
+		if dataProp, ok := responseSchema.Properties["Data"]; ok {
+			dataSchema = dataProp
+		} else if dataProp, ok := responseSchema.Properties["data"]; ok {
+			dataSchema = dataProp
+		}
+
+		// 4. 如果找到了 data 字段，并且这个字段本身是一个 $ref，
+		//    那么我们就找到了我们需要的核心数据类型的引用。
+		//    我们直接用这个引用来生成类型，而不是用它指向的内容。
+		//    这样，`convertSchemaToType` 就会正确处理这个引用，而 `processSchemas`
+		//    会负责在后面生成这个引用指向的结构体。
+		if dataSchema != nil && dataSchema.Ref != "" {
+			return *c.convertSchemaToType(dataSchema, "main", baseFuncName, "Response")
+		}
+	}
+
+	return *c.convertSchemaToType(bestResp.Schema, "main", baseFuncName, "Response")
 }
 
 func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path, responseTypeName string) (idl_ast.Service, string, string) {

@@ -128,106 +128,156 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	return finalSchema
 }
 
-func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentName, fieldName string) *idl_ast.Type {
+func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, parentName, fieldName string) *idl_ast.Type {
 	if schema == nil {
 		return &idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// 1. 最高优先级：处理引用。如果 schema 是一个引用，直接返回引用名，不再进行任何内部解析。
-	//    这是为了确保全局定义（如 enum, struct）只由 processSchemas 处理一次。
+	var ref string
 	if schema.Ref != "" {
-		refOriginalFullName := ""
-		if strings.HasPrefix(schema.Ref, "#/components/schemas/") {
-			refOriginalFullName = strings.TrimPrefix(schema.Ref, "#/components/schemas/")
-		} else if strings.HasPrefix(schema.Ref, "#/definitions/") {
-			refOriginalFullName = strings.TrimPrefix(schema.Ref, "#/definitions/")
-		} else {
-			// Fallback for simple references like "$ref": "MyType"
-			refOriginalFullName = schema.Ref
+		ref = schema.Ref
+	} else if len(schema.AllOf) == 1 && schema.AllOf[0].Ref != "" {
+		ref = schema.AllOf[0].Ref
+	}
+
+	if ref != "" {
+		resolvedSchema := c.resolveSchema(ref)
+		if resolvedSchema != nil && isTypedefCandidate(resolvedSchema) {
+			return c.convertSchemaToType(resolvedSchema, currentFileNamespace, parentName, fieldName)
 		}
 
-		refNamespace, refOriginalShortName := splitDefinitionName(refOriginalFullName)
-		sanitizedShortName := sanitizeAndTransliterateName(refOriginalShortName)
+		refFullName := ""
+		if strings.HasPrefix(ref, "#/components/schemas/") {
+			refFullName = strings.TrimPrefix(ref, "#/components/schemas/")
+		} else if strings.HasPrefix(ref, "#/definitions/") {
+			refFullName = strings.TrimPrefix(ref, "#/definitions/")
+		}
 
-		var finalName string
-		if refNamespace != "main" {
-			finalName = refNamespace + "." + sanitizedShortName
+		refNamespace, originalShortName := splitDefinitionName(refFullName)
+		shortName := sanitizeAndTransliterateName(originalShortName)
+		finalName := ""
+
+		outputDirPrefix := c.getOutputDirPrefix()
+		targetFileName := ""
+		if refNamespace == "main" {
+			targetFileName = c.getMainThriftFileName()
 		} else {
-			finalName = sanitizedShortName
+			targetFileName = filepath.Join(outputDirPrefix, refNamespace+".thrift")
+		}
+
+		currentFileName := ""
+		if currentFileNamespace == "main" {
+			currentFileName = c.getMainThriftFileName()
+		} else {
+			currentFileName = filepath.Join(outputDirPrefix, currentFileNamespace+".thrift")
+		}
+
+		if targetFileName == currentFileName {
+			finalName = shortName
+		} else {
+			if refNamespace != "main" {
+				finalName = refNamespace + "." + shortName
+			} else {
+				finalName = shortName
+			}
 		}
 
 		return &idl_ast.Type{
 			Name:               finalName,
 			IsPrimitive:        false,
-			FullyQualifiedName: fmt.Sprintf("%s#%s", c.filePath, refOriginalFullName),
+			FullyQualifiedName: fmt.Sprintf("%s#%s", c.filePath, refFullName),
 		}
 	}
 
-	// 2. 处理 allOf，这可能会将多个 schema (包括 $ref) 合并。
-	if len(schema.AllOf) > 0 {
-		// 特殊情况：如果 allOf 只有一个 $ref 元素，直接处理该 $ref
-		if len(schema.AllOf) == 1 && schema.AllOf[0].Ref != "" {
-			return c.convertSchemaToType(schema.AllOf[0], parentNamespace, parentName, fieldName)
+	if len(schema.AllOf) > 0 || (schema.Type == "object" && len(schema.Properties) > 0) {
+		baseName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
+		newStructName := baseName
+
+		outputDirPrefix := c.getOutputDirPrefix()
+		targetFileName := ""
+		if currentFileNamespace == "main" {
+			targetFileName = c.getMainThriftFileName()
+		} else {
+			targetFileName = filepath.Join(outputDirPrefix, currentFileNamespace+".thrift")
 		}
-		// 否则，压平 allOf
-		schema = c.flattenAllOf(schema.AllOf)
+		defs := c.getOrCreateDefs(targetFileName)
+
+		isNameTaken := func(name string) bool {
+			for _, msg := range defs.Messages {
+				if msg.Name == name {
+					return true
+				}
+			}
+			for _, enm := range defs.Enums {
+				if enm.Name == name {
+					return true
+				}
+			}
+			for _, td := range defs.Typedefs {
+				if td.Alias == name {
+					return true
+				}
+			}
+			return false
+		}
+
+		counter := 2
+		for isNameTaken(newStructName) {
+			newStructName = fmt.Sprintf("%s_%d", baseName, counter)
+			counter++
+		}
+
+		newMessage := idl_ast.Message{
+			Name:               newStructName,
+			FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, newStructName),
+			Type:               "struct",
+			Comments:           descriptionToComments(schema.Description),
+		}
+
+		finalSchema := schema
+		if len(schema.AllOf) > 0 {
+			finalSchema = c.flattenAllOf(schema.AllOf)
+		}
+		if len(schema.Properties) > 0 {
+			if finalSchema.Properties == nil {
+				finalSchema.Properties = make(map[string]*Schema)
+			}
+			for k, v := range schema.Properties {
+				finalSchema.Properties[k] = v
+			}
+		}
+
+		requiredMap := make(map[string]bool)
+		for _, reqField := range finalSchema.Required {
+			requiredMap[reqField] = true
+		}
+
+		propNames := make([]string, 0, len(finalSchema.Properties))
+		for propName := range finalSchema.Properties {
+			propNames = append(propNames, propName)
+		}
+		sort.Strings(propNames)
+
+		for i, propName := range propNames {
+			propSchema := finalSchema.Properties[propName]
+			required := "optional"
+			if requiredMap[propName] {
+				required = "required"
+			}
+			field := idl_ast.Field{
+				ID:       i + 1,
+				Name:     propName,
+				Type:     *c.convertSchemaToType(propSchema, currentFileNamespace, newStructName, propName),
+				Required: required,
+				Comments: descriptionToComments(propSchema.Description),
+			}
+			newMessage.Fields = append(newMessage.Fields, field)
+		}
+
+		defs.Messages = append(defs.Messages, newMessage)
+		return &idl_ast.Type{Name: newStructName, IsPrimitive: false}
 	}
 
-	// 3. 处理内联（匿名）的整型枚举。这段逻辑现在只会在 schema 没有 $ref 时执行。
-	if len(schema.Enum) > 0 && schema.Type == "integer" {
-		if parentName != "" && fieldName != "" {
-			enumName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
-			var targetFileName string
-			outputDir := c.getOutputDirPrefix()
-			if parentNamespace == "main" {
-				targetFileName = c.getMainThriftFileName()
-			} else {
-				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
-			}
-			defs := c.getOrCreateDefs(targetFileName)
-
-			enumExists := false
-			for _, e := range defs.Enums {
-				if e.Name == enumName {
-					enumExists = true
-					break
-				}
-			}
-
-			if !enumExists {
-				newEnum := idl_ast.Enum{
-					Name:               enumName,
-					FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, enumName),
-					Comments:           descriptionToComments(schema.Description),
-				}
-				useVarNames := len(schema.XEnumVarNames) == len(schema.Enum)
-				for i, val := range schema.Enum {
-					var memberName string
-					if useVarNames {
-						memberName = schema.XEnumVarNames[i]
-					} else {
-						memberName = fmt.Sprintf("%s_%v", enumName, val)
-					}
-					intValue, ok := val.(int)
-					if !ok {
-						if floatVal, isFloat := val.(float64); isFloat {
-							intValue = int(floatVal)
-						} else {
-							intValue = i
-						}
-					}
-					newEnum.Values = append(newEnum.Values, idl_ast.EnumValue{
-						Name:  memberName,
-						Value: intValue,
-					})
-				}
-				defs.Enums = append(defs.Enums, newEnum)
-			}
-			return &idl_ast.Type{Name: enumName, IsPrimitive: false}
-		}
-	}
-
-	// 4. 处理基本类型、map 和内联 struct
 	switch schema.Type {
 	case "string":
 		return &idl_ast.Type{Name: "string", IsPrimitive: true}
@@ -250,7 +300,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 		}
 		return &idl_ast.Type{
 			Name:      "list",
-			ValueType: c.convertSchemaToType(schema.Items, parentNamespace, parentName, itemName),
+			ValueType: c.convertSchemaToType(schema.Items, currentFileNamespace, parentName, itemName),
 		}
 	case "object", "":
 		if schema.AdditionalProperties != nil {
@@ -273,82 +323,29 @@ func (c *Converter) convertSchemaToType(schema *Schema, parentNamespace, parentN
 					}
 				}
 			}
-
 			if apSchema != nil {
 				isAnyType := apSchema.Type == "" && apSchema.Ref == "" && len(apSchema.Properties) == 0 && apSchema.AdditionalProperties == nil
-				if isAnyType {
-					return &idl_ast.Type{
-						Name:      "map",
-						KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-						ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
-					}
+				valueType := &idl_ast.Type{Name: "string", IsPrimitive: true}
+				if !isAnyType {
+					valueType = c.convertSchemaToType(apSchema, currentFileNamespace, parentName, fieldName+"Value")
 				}
 				return &idl_ast.Type{
 					Name:      "map",
 					KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
-					ValueType: c.convertSchemaToType(apSchema, parentNamespace, parentName, fieldName+"Value"),
+					ValueType: valueType,
 				}
 			}
 		}
-		if len(schema.Properties) > 0 {
-			newStructName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
-			var targetFileName string
-			outputDir := c.getOutputDirPrefix()
-			if parentNamespace == "main" {
-				targetFileName = c.getMainThriftFileName()
-			} else {
-				targetFileName = filepath.Join(outputDir, parentNamespace+".thrift")
-			}
-			defs := c.getOrCreateDefs(targetFileName)
-
-			for _, msg := range defs.Messages {
-				if msg.Name == newStructName {
-					return &idl_ast.Type{Name: newStructName, IsPrimitive: false}
-				}
-			}
-
-			newMessage := idl_ast.Message{
-				Name:               newStructName,
-				FullyQualifiedName: fmt.Sprintf("%s#%s", targetFileName, newStructName),
-				Type:               "struct",
-				Comments:           descriptionToComments(schema.Description),
-			}
-
-			requiredMap := make(map[string]bool)
-			for _, reqField := range schema.Required {
-				requiredMap[reqField] = true
-			}
-
-			propNames := make([]string, 0, len(schema.Properties))
-			for propName := range schema.Properties {
-				propNames = append(propNames, propName)
-			}
-			sort.Strings(propNames)
-
-			for i, propName := range propNames {
-				propSchema := schema.Properties[propName]
-				required := "optional"
-				if requiredMap[propName] {
-					required = "required"
-				}
-				field := idl_ast.Field{
-					ID:       i + 1,
-					Name:     propName,
-					Type:     *c.convertSchemaToType(propSchema, parentNamespace, newStructName, propName),
-					Required: required,
-					Comments: descriptionToComments(propSchema.Description),
-				}
-				newMessage.Fields = append(newMessage.Fields, field)
-			}
-			defs.Messages = append(defs.Messages, newMessage)
-			return &idl_ast.Type{Name: newStructName, IsPrimitive: false}
+		return &idl_ast.Type{
+			Name:      "map",
+			KeyType:   &idl_ast.Type{Name: "string", IsPrimitive: true},
+			ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true},
 		}
-
-		return &idl_ast.Type{Name: "map", KeyType: &idl_ast.Type{Name: "string", IsPrimitive: true}, ValueType: &idl_ast.Type{Name: "string", IsPrimitive: true}}
 	default:
 		return &idl_ast.Type{Name: "string", IsPrimitive: true}
 	}
 }
+
 func (c *Converter) convertValueToConstantValue(val any) (*idl_ast.ConstantValue, error) {
 	if val == nil {
 		return nil, nil
