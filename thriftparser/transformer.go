@@ -440,14 +440,21 @@ func transformType(p *parser.FieldType, ctx *transformContext) idl_ast.Type {
 		}
 	}
 
-	if p.KeyType != nil {
-		keyType := transformType(p.KeyType, ctx)
-		t.KeyType = &keyType
-	}
-
-	if p.ValueType != nil {
-		valueType := transformType(p.ValueType, ctx)
-		t.ValueType = &valueType
+	switch t.Name {
+	case "map":
+		if p.KeyType != nil {
+			keyType := transformType(p.KeyType, ctx)
+			t.KeyType = &keyType
+		}
+		if p.ValueType != nil {
+			valueType := transformType(p.ValueType, ctx)
+			t.ValueType = &valueType
+		}
+	case "list", "set":
+		if p.KeyType != nil {
+			valueType := transformType(p.KeyType, ctx)
+			t.ValueType = &valueType
+		}
 	}
 
 	return t
