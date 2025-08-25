@@ -60,6 +60,10 @@ func transform(document *parser.Document, source []byte, fileURI uri.URI, rootDi
 }
 
 func convertPosition(p parser.Position) idl_ast.Position {
+	// parser.Position 的列是从 0 开始的，而 idl_ast.Position 的列是从 1 开始的
+	if p.Col == 0 {
+		p.Col = 1
+	}
 	return idl_ast.Position{
 		Line:   p.Line,
 		Column: p.Col,
