@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Skyenought/idlanalyzer/idl_ast"
@@ -416,9 +418,6 @@ func removeCommentsRecursive(node parser.Node) {
 	}
 }
 
-// 文件: thriftparser/parser.go
-
-// buildSnapshotWithMap 从内存中的文件 map 构建快照。
 func (p *ThriftParser) buildSnapshotWithMap(name string, fileMap map[string][]byte) (*cache.Snapshot, []*cache.FileChange, error) {
 	var fileChanges []*cache.FileChange
 
@@ -427,21 +426,12 @@ func (p *ThriftParser) buildSnapshotWithMap(name string, fileMap map[string][]by
 			continue
 		}
 
-		// 1. 构造一个逻辑上的绝对路径，用于 parser 和 URI
-		// 使用 path/filepath.Join 可以正确处理路径分隔符
 		logicalAbsPath := filepath.Join(p.rootDir, relativePath)
 
-		// --- AST 解析逻辑不变 ---
-		var finalAST *parser.Document
-		// parser.Parse 的第一个参数 filename 主要用于错误信息中，使用逻辑路径即可
-		initialAST, err := parser.Parse(logicalAbsPath, content)
+		finalAST, fixedContent, err := parseThriftFile(logicalAbsPath, content)
 		if err != nil {
-			fmt.Errorf("Initial parse failed for %s: %v", logicalAbsPath, err)
-			finalAST = nil
-		} else {
-			finalAST = initialAST.(*parser.Document)
+			return nil, nil, fmt.Errorf("failed to process %s: %w", logicalAbsPath, err)
 		}
-
 		if p.opts.NoComments && finalAST != nil {
 			removeAllComments(finalAST)
 			contentString, err := format.FormatDocument(finalAST)
@@ -452,28 +442,24 @@ func (p *ThriftParser) buildSnapshotWithMap(name string, fileMap map[string][]by
 
 			reParsedAST, err := parser.Parse(logicalAbsPath, content)
 			if err != nil {
-				fmt.Errorf("re-parse after comment removal failed for %s: %v", logicalAbsPath, err)
-				finalAST = nil
+				fmt.Errorf("initial parse failed for %s: %v", logicalAbsPath, err)
+				return nil, nil, err
 			} else {
 				finalAST = reParsedAST.(*parser.Document)
 			}
 		}
 
-		// 2. 使用这个逻辑绝对路径创建 URI
-		// uri.File 会自动处理并生成 "file:///path/to/virtual/project/main.thrift" 格式
 		uriFile := uri.File(logicalAbsPath)
 
-		// p.fileAsts 的键是 URI 的 Filename() 部分，也就是逻辑绝对路径
 		p.fileAsts[uriFile.Filename()] = finalAST
 
 		fileChanges = append(fileChanges, &cache.FileChange{
 			URI:     uriFile,
-			Content: content,
+			Content: fixedContent,
 			From:    cache.FileChangeTypeDidOpen,
 		})
 	}
 
-	// --- 快照构建逻辑不变 ---
 	store := &memoize.Store{}
 	c := cache.New(store)
 	fs := cache.NewOverlayFS(c)
@@ -491,7 +477,7 @@ func (p *ThriftParser) buildSnapshotWithMap(name string, fileMap map[string][]by
 }
 
 func (p *ThriftParser) buildSnapshot(name, folder string) (*cache.Snapshot, []*cache.FileChange, error) {
-	var fileChanges []*cache.FileChange
+	fileMap := make(map[string][]byte)
 
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -503,60 +489,22 @@ func (p *ThriftParser) buildSnapshot(name, folder string) (*cache.Snapshot, []*c
 			if err != nil {
 				return err
 			}
-			absPath, _ := filepath.Abs(path)
 
-			var finalAST *parser.Document
-			initialAST, err := parser.Parse(absPath, content)
+			relativePath, err := filepath.Rel(folder, path)
 			if err != nil {
-				fmt.Errorf("Initial parse failed for %s: %v", absPath, err)
-				finalAST = nil // Continue even if parsing fails.
-			} else {
-				finalAST = initialAST.(*parser.Document)
+				return err
 			}
 
-			if p.opts.NoComments && finalAST != nil {
-				removeAllComments(finalAST)
-				contentString, err := format.FormatDocument(finalAST)
-				if err != nil {
-					return err // Formatting failure is a critical error.
-				}
-				content = []byte(contentString)
-
-				reParsedAST, err := parser.Parse(absPath, content)
-				if err != nil {
-					fmt.Errorf("re-parse after comment removal failed for %s: %v", absPath, err)
-					finalAST = nil
-				} else {
-					finalAST = reParsedAST.(*parser.Document)
-				}
-			}
-			uriFile := uri.File(absPath)
-			p.fileAsts[uriFile.Filename()] = finalAST
-
-			fileChanges = append(fileChanges, &cache.FileChange{
-				URI:     uriFile,
-				Content: content,
-				From:    cache.FileChangeTypeDidOpen,
-			})
+			fileMap[relativePath] = content
 		}
 		return nil
 	})
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("walk dir '%s' fail: %w", folder, err)
 	}
-	store := &memoize.Store{}
-	c := cache.New(store)
-	fs := cache.NewOverlayFS(c)
-	fs.Update(context.TODO(), fileChanges)
 
-	view := cache.NewView(name, uri.URI(fmt.Sprintf("file://%s", folder)), fs, store)
-	ss := cache.NewSnapshot(view, store)
-
-	for _, f := range fileChanges {
-		ss.Parse(context.TODO(), f.URI)
-	}
-
-	return ss, fileChanges, nil
+	return p.buildSnapshotWithMap(name, fileMap)
 }
 
 func removeLocationsInSchema(schema *idl_ast.IDLSchema) {
@@ -654,4 +602,61 @@ func removeLocationsInType(t *idl_ast.Type) {
 	if t.ValueType != nil {
 		removeLocationsInType(t.ValueType)
 	}
+}
+
+const (
+	maxParseRetries = 5
+)
+
+var (
+	// 从错误信息中提取行号: `:(\d+):\d+`
+	lineFromErrorRegex = regexp.MustCompile(`:(\d+):\d+`)
+	// 查找并修复容器类型关键词，(?i)表示不区分大小写, \b是单词边界
+	containerTypeRegex = regexp.MustCompile(`\b(?i)(map|list|set)\b`)
+)
+
+// parseThriftFile 是一个高度封装的辅助函数。
+func parseThriftFile(filename string, initialContent []byte) (doc *parser.Document, finalContent []byte, err error) {
+	currentContent := initialContent
+	var lastErr error
+
+	for i := 0; i < maxParseRetries; i++ {
+		ast, parseErr := parser.Parse(filename, currentContent)
+		if parseErr == nil {
+			return ast.(*parser.Document), currentContent, nil
+		}
+
+		lastErr = parseErr
+		errorString := parseErr.Error()
+
+		isFixableError := strings.Contains(errorString, "rule ErrStructField") || strings.Contains(errorString, "expecting")
+		if !isFixableError {
+			break
+		}
+		tm := make(map[string][]byte)
+		tm[filename] = currentContent
+		matches := lineFromErrorRegex.FindStringSubmatch(errorString)
+		if len(matches) < 2 {
+			break
+		}
+		lineNum, _ := strconv.Atoi(matches[1])
+
+		lines := strings.Split(string(currentContent), "\n")
+		if lineNum <= 0 || lineNum > len(lines) {
+			break
+		}
+
+		// 应用修复策略：将 Map/List/Set 纠正为小写
+		problematicLine := lines[lineNum-1]
+		fixedLine := containerTypeRegex.ReplaceAllStringFunc(problematicLine, strings.ToLower)
+
+		if problematicLine == fixedLine {
+			break
+		}
+
+		lines[lineNum-1] = fixedLine
+		currentContent = []byte(strings.Join(lines, "\n"))
+	}
+
+	return nil, initialContent, fmt.Errorf("failed to parse after %d retries, last error: %w", maxParseRetries, lastErr)
 }
