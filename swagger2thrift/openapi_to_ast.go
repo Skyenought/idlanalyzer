@@ -12,6 +12,7 @@ import (
 )
 
 // convertInternal is the main entry point. It detects the spec version and converts it.
+// It now includes a fallback mechanism to handle specs missing a version field.
 func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDLSchema, error) {
 	var genericSpec map[string]interface{}
 	if err := yaml.Unmarshal(content, &genericSpec); err != nil {
@@ -32,8 +33,9 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 		converter.spec = &spec
 		return converter.convertV2()
+	}
 
-	} else if openAPIVersion, ok := genericSpec["openapi"].(string); ok && strings.HasPrefix(openAPIVersion, "3.") {
+	if openAPIVersion, ok := genericSpec["openapi"].(string); ok && strings.HasPrefix(openAPIVersion, "3.") {
 		var spec OpenAPISpec
 		if err := yaml.Unmarshal(content, &spec); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal OpenAPI v3 spec: %w", err)
@@ -42,7 +44,34 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		return converter.convertV3()
 	}
 
-	return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field")
+	// 2. 进入兜底机制：如果版本字段缺失
+	if _, hasPaths := genericSpec["paths"]; !hasPaths {
+		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field, and no 'paths' field found to indicate a spec file")
+	}
+
+	// 3. 根据结构特征猜测版本
+	_, hasComponents := genericSpec["components"]
+	_, hasDefinitions := genericSpec["definitions"]
+
+	// 优先猜测为 OpenAPI v3 (更现代)
+	if hasComponents {
+		var spec OpenAPISpec
+		if err := yaml.Unmarshal(content, &spec); err == nil {
+			converter.spec = &spec
+			return converter.convertV3()
+		}
+	}
+
+	// 尝试猜测为 Swagger v2
+	if hasDefinitions {
+		var spec SwaggerSpec
+		if err := yaml.Unmarshal(content, &spec); err == nil {
+			converter.spec = &spec
+			return converter.convertV2()
+		}
+	}
+
+	return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field; fallback attempts to parse as v2 or v3 based on structure also failed")
 }
 
 // convertV3 handles the conversion of an OpenAPI 3.0 spec.
