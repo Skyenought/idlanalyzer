@@ -188,24 +188,26 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 
 		outputDirPrefix := c.getOutputDirPrefix()
 		targetFileName := ""
+		sanitizedRefNamespace := strings.ReplaceAll(refNamespace, "-", "_") // 在这里提前清理
 		if refNamespace == "main" {
 			targetFileName = c.getMainThriftFileName()
 		} else {
-			targetFileName = filepath.Join(outputDirPrefix, refNamespace+".thrift")
+			targetFileName = filepath.Join(outputDirPrefix, sanitizedRefNamespace+".thrift")
 		}
 
 		currentFileName := ""
+		sanitizedCurrentFileNamespace := strings.ReplaceAll(currentFileNamespace, "-", "_") // 同时清理当前命名空间
 		if currentFileNamespace == "main" {
 			currentFileName = c.getMainThriftFileName()
 		} else {
-			currentFileName = filepath.Join(outputDirPrefix, currentFileNamespace+".thrift")
+			currentFileName = filepath.Join(outputDirPrefix, sanitizedCurrentFileNamespace+".thrift")
 		}
 
 		if targetFileName == currentFileName {
 			finalName = shortName
 		} else {
 			if refNamespace != "main" {
-				finalName = refNamespace + "." + shortName
+				finalName = sanitizedRefNamespace + "." + shortName
 			} else {
 				finalName = shortName
 			}

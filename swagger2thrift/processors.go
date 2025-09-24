@@ -58,7 +58,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 		if namespace == "main" {
 			fileName = c.getMainThriftFileName()
 		} else {
-			fileName = filepath.Join(outputDir, namespace+".thrift")
+			sanitizedNamespace := strings.ReplaceAll(namespace, "-", "_")
+			fileName = filepath.Join(outputDir, sanitizedNamespace+".thrift")
 		}
 
 		// 获取目标文件的定义列表
@@ -80,7 +81,17 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				if useVarNames {
 					memberName = schema.XEnumVarNames[i]
 				} else {
-					memberName = fmt.Sprintf("%s_%v", toPascalCase(shortName), val)
+					originalValueStr := fmt.Sprintf("%v", val)
+
+					// 使用 sanitizeAndTransliterateName 对其进行清理
+					// 它会将 "in-place" 转换为 "InPlace"
+					sanitizedValue := sanitizeAndTransliterateName(originalValueStr)
+					if sanitizedValue == "" {
+						sanitizedValue = "_" // 防止空字符串导致生成 "ContainerUpdateMode_" 这种奇怪的名字
+					}
+
+					// 使用清理后的值来拼接成员名
+					memberName = fmt.Sprintf("%s_%s", toPascalCase(shortName), sanitizedValue)
 				}
 
 				// 确保值为整数

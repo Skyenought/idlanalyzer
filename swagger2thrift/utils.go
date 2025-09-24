@@ -156,22 +156,11 @@ func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 	return c.fileDefinitions[filename]
 }
 
-// toLowerCamelCase converts a string to lowerCamelCase.
-func toLowerCamelCase(s string) string {
-	pascal := toPascalCase(s)
-	if pascal == "" {
-		return ""
-	}
-	runes := []rune(pascal)
-	runes[0] = unicode.ToLower(runes[0])
-	return string(runes)
-}
-
 func (c *Converter) getOutputDirPrefix() string {
 	base := filepath.Base(c.filePath)
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
 func sanitizeFieldName(name string) string {
-	return strings.ReplaceAll(name, "-", "_")
+	return strings.ReplaceAll(strings.ReplaceAll(name, "/", "_"), "-", "_")
 }
