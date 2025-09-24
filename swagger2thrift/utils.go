@@ -162,5 +162,33 @@ func (c *Converter) getOutputDirPrefix() string {
 }
 
 func sanitizeFieldName(name string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(name, "/", "_"), "-", "_")
+	// 创建一个多字符替换器，以提高效率和可读性
+	replacer := strings.NewReplacer(
+		"-", "_",
+		".", "_",
+		"/", "_",
+	)
+	return replacer.Replace(name)
+}
+
+func getGroupedNamespace(namespace string, depth int) string {
+	parts := strings.Split(namespace, ".")
+	if len(parts) > depth {
+		return strings.Join(parts[:depth], ".")
+	}
+	return namespace
+}
+
+func createUniqueName(namespace, shortName string) string {
+	// Don't prefix 'main' namespace to keep primary type names clean.
+	if namespace == "main" {
+		return toPascalCase(shortName)
+	}
+
+	// Sanitize and combine namespace and short name.
+	// This replaces '.', '-', etc., with PascalCase segments.
+	prefix := toPascalCase(namespace)
+	suffix := toPascalCase(shortName)
+
+	return prefix + suffix
 }
