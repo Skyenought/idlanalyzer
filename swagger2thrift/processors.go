@@ -144,7 +144,7 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
 				field := idl_ast.Field{
 					ID:           fieldID,
-					Name:         propName,
+					Name:         sanitizeFieldName(propName),
 					Type:         *c.convertSchemaToType(propSchema, namespace, shortName, propName),
 					Required:     required,
 					DefaultValue: defaultValue,
@@ -338,7 +338,8 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 	currentNamespace := "main"
 
 	for _, param := range params {
-		if existingField, ok := paramFields[param.Name]; ok {
+		sanitizedName := sanitizeFieldName(param.Name)
+		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				existingField.Annotations = append(existingField.Annotations, *annotation)
 			}
@@ -351,7 +352,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				required = "required"
 			}
 			field := &idl_ast.Field{
-				Name:     param.Name,
+				Name:     sanitizedName,
 				Type:     *c.convertSchemaToType(param.Schema, currentNamespace, parentName, param.Name),
 				Required: required,
 				Comments: descriptionToComments(param.Description),
@@ -359,7 +360,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				field.Annotations = append(field.Annotations, *annotation)
 			}
-			paramFields[param.Name] = field
+			paramFields[sanitizedName] = field
 		}
 	}
 
@@ -369,8 +370,9 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				for propName, propSchema := range mediaType.Schema.Properties {
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
+					sanitizedPropName := sanitizeFieldName(propName)
 					field := &idl_ast.Field{
-						Name:     propName,
+						Name:     sanitizedPropName,
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 						Required: required,
 						Comments: descriptionToComments(propSchema.Description),
@@ -378,7 +380,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 					if annotation := createParameterAnnotation("body", propName); annotation != nil {
 						field.Annotations = append(field.Annotations, *annotation)
 					}
-					paramFields[propName] = field
+					paramFields[sanitizedPropName] = field
 				}
 			} else {
 				required := "optional"
@@ -446,8 +448,9 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if requiredMap[propName] {
 					required = "required"
 				}
+				sanitizedPropName := sanitizeFieldName(propName)
 				field := &idl_ast.Field{
-					Name:     propName,
+					Name:     sanitizedPropName,
 					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 					Required: required,
 					Comments: descriptionToComments(propSchema.Description),
@@ -455,13 +458,13 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if annotation := createParameterAnnotation("body", propName); annotation != nil {
 					field.Annotations = append(field.Annotations, *annotation)
 				}
-				paramFields[propName] = field
+				paramFields[sanitizedPropName] = field
 			}
 			continue
 		}
 
 		// MODIFICATION: Sanitize field name
-		sanitizedName := toLowerCamelCase(param.Name)
+		sanitizedName := sanitizeFieldName(param.Name)
 
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {

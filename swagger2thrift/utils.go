@@ -172,24 +172,6 @@ func (c *Converter) getOutputDirPrefix() string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-// sanitizeName removes consecutively repeated words from a PascalCase string.
-func sanitizeName(name string) string {
-	re := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
-	parts := re.FindAllString(name, -1)
-	if len(parts) <= 1 {
-		return name
-	}
-
-	var cleanParts []string
-	if len(parts) > 0 {
-		cleanParts = append(cleanParts, parts[0])
-	}
-
-	for i := 1; i < len(parts); i++ {
-		if parts[i] != parts[i-1] {
-			cleanParts = append(cleanParts, parts[i])
-		}
-	}
-
-	return strings.Join(cleanParts, "")
+func sanitizeFieldName(name string) string {
+	return strings.ReplaceAll(name, "-", "_")
 }
