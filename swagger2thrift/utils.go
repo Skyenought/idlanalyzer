@@ -193,3 +193,8 @@ func sanitizeName(name string) string {
 
 	return strings.Join(cleanParts, "")
 }
+
+// sanitizeFieldName replaces characters that are invalid in Thrift identifiers, like hyphens.
+func sanitizeFieldName(name string) string {
+	return strings.ReplaceAll(name, "-", "_")
+}

@@ -6,3 +6,4 @@ generated_thrifts
 graphviz.go
 *.json
 *.yaml
+thriftlinter
