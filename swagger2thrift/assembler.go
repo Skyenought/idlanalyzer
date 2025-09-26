@@ -101,8 +101,13 @@ func (c *Converter) collectNamespacesFromType(t *idl_ast.Type, currentFileNamesp
 	}
 
 	ns, _ := splitDefinitionName(t.Name)
-	if ns != "main" && ns != currentFileNamespace && ns != "" {
-		needed[ns] = struct{}{}
+
+	groupedCurrentNs := getGroupedNamespace(currentFileNamespace, 2)
+	groupedNs := getGroupedNamespace(ns, 2)
+
+	// 只有当它们不属于同一个分组，并且不是 main 时，才需要 include
+	if ns != "main" && groupedNs != groupedCurrentNs && ns != "" {
+		needed[groupedNs] = struct{}{}
 	}
 
 	if t.KeyType != nil {
