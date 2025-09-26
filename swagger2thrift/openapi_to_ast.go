@@ -11,6 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// convertInternal is the main entry point. It detects the spec version and converts it.
+// It now includes a fallback mechanism to handle specs missing a version field.
 func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDLSchema, error) {
 	var genericSpec map[string]interface{}
 	if err := yaml.Unmarshal(content, &genericSpec); err != nil {
@@ -43,12 +45,19 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		return converter.convertV3()
 	}
 
+
 	if _, hasPaths := genericSpec["paths"]; !hasPaths {
 		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field, and no 'paths' field found to indicate a spec file")
 	}
 
 	_, hasComponents := genericSpec["components"]
 	_, hasDefinitions := genericSpec["definitions"]
+
+
+	_, hasComponents := genericSpec["components"]
+	_, hasDefinitions := genericSpec["definitions"]
+
+	// 优先猜测为 OpenAPI v3 (更现代)
 
 	if hasComponents {
 		var spec OpenAPISpec
@@ -58,6 +67,8 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 	}
 
+
+	// 尝试猜测为 Swagger v2
 	if hasDefinitions {
 		var spec SwaggerSpec
 		if err := yaml.Unmarshal(content, &spec); err == nil {
