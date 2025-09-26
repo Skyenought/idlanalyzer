@@ -50,9 +50,6 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field, and no 'paths' field found to indicate a spec file")
 	}
 
-	_, hasComponents := genericSpec["components"]
-	_, hasDefinitions := genericSpec["definitions"]
-
 
 	_, hasComponents := genericSpec["components"]
 	_, hasDefinitions := genericSpec["definitions"]
