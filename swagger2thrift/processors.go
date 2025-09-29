@@ -33,9 +33,9 @@ func isTypedefCandidate(schema *Schema) bool {
 	}
 }
 
-func (c *Converter) processSchemas(schemas map[string]*Schema) {
+func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 	if schemas == nil {
-		return
+		return nil
 	}
 
 	schemaNames := make([]string, 0, len(schemas))
@@ -47,29 +47,38 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 	for _, name := range schemaNames {
 		schema := schemas[name]
 
-		// 1. 统一进行名称处理
 		namespace, originalShortName := splitDefinitionName(name)
-		// 使用您自定义的名称处理函数，确保全局一致性
-		shortName := sanitizeAndTransliterateName(originalShortName)
+		uniqueShortName := createUniqueName(namespace, originalShortName)
 
-		// 2. 确定该定义应该属于哪个 thrift 文件
 		var fileName string
 		outputDir := c.getOutputDirPrefix()
 		if namespace == "main" {
 			fileName = c.getMainThriftFileName()
 		} else {
-			fileName = filepath.Join(outputDir, namespace+".thrift")
+			groupedNamespace := getGroupedNamespace(namespace, 2)
+			sanitizedGroupedNamespace := strings.ReplaceAll(groupedNamespace, "-", "_")
+			fileName = filepath.Join(outputDir, sanitizedGroupedNamespace+".thrift")
 		}
 
-		// 获取目标文件的定义列表
 		defs := c.getOrCreateDefs(fileName)
-		// 生成完全限定名 (FQN)
-		fqn := fmt.Sprintf("%s#%s", fileName, shortName)
+		fqn := fmt.Sprintf("%s#%s", fileName, uniqueShortName)
 
-		// 3. 根据 schema 的特征，将其分派到正确的生成逻辑
+		if existing, ok := c.canonicalDefs[uniqueShortName]; ok {
+			if existing.fileName != fileName {
+				return fmt.Errorf("命名冲突: 命名空间 '%s' 中的 '%s' 和命名空间 '%s' 中的 '%s' 都生成了名为 '%s' 的类型",
+					existing.originalNamespace, existing.originalFullName, namespace, name, uniqueShortName)
+			}
+			continue
+		}
+		c.canonicalDefs[uniqueShortName] = canonicalDef{
+			originalNamespace: namespace,
+			originalFullName:  name,
+			fileName:          fileName,
+		}
+
 		if len(schema.Enum) > 0 {
 			enum := idl_ast.Enum{
-				Name:               shortName,
+				Name:               uniqueShortName,
 				FullyQualifiedName: fqn,
 				Comments:           descriptionToComments(schema.Description),
 			}
@@ -80,44 +89,41 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				if useVarNames {
 					memberName = schema.XEnumVarNames[i]
 				} else {
-					memberName = fmt.Sprintf("%s_%v", toPascalCase(shortName), val)
+					sanitizedValue := sanitizeAndTransliterateName(fmt.Sprintf("%v", val))
+					if sanitizedValue == "" {
+						sanitizedValue = "EMPTY"
+					}
+					memberName = fmt.Sprintf("%s_%s", toPascalCase(uniqueShortName), sanitizedValue)
 				}
 
-				// 确保值为整数
 				intValue, ok := val.(int)
 				if !ok {
 					if floatVal, isFloat := val.(float64); isFloat {
 						intValue = int(floatVal)
 					} else {
-						intValue = i // 回退到使用索引作为值
+						intValue = i
 					}
 				}
-
-				enum.Values = append(enum.Values, idl_ast.EnumValue{
-					Name:  memberName,
-					Value: intValue,
-				})
+				enum.Values = append(enum.Values, idl_ast.EnumValue{Name: memberName, Value: intValue})
 			}
 			defs.Enums = append(defs.Enums, enum)
 
 		} else if isTypedefCandidate(schema) {
 			typedef := idl_ast.Typedef{
-				Alias:    shortName,
+				Alias:    uniqueShortName,
 				Type:     *c.convertSchemaToType(schema, namespace, "", ""),
 				Comments: descriptionToComments(schema.Description),
 			}
 			defs.Typedefs = append(defs.Typedefs, typedef)
 
 		} else {
-			// 如果不是 enum 也不是 typedef，那么它就是一个 message (struct)
 			message := idl_ast.Message{
-				Name:               shortName,
+				Name:               uniqueShortName,
 				FullyQualifiedName: fqn,
-				Type:               "struct", // 默认为 struct
+				Type:               "struct",
 				Comments:           descriptionToComments(schema.Description),
 			}
 
-			// 如果有 allOf，先将其扁平化
 			finalSchema := schema
 			if len(schema.AllOf) > 0 {
 				finalSchema = c.flattenAllOf(schema.AllOf)
@@ -144,8 +150,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
 				field := idl_ast.Field{
 					ID:           fieldID,
-					Name:         propName,
-					Type:         *c.convertSchemaToType(propSchema, namespace, shortName, propName),
+					Name:         sanitizeFieldName(propName),
+					Type:         *c.convertSchemaToType(propSchema, namespace, uniqueShortName, propName),
 					Required:     required,
 					DefaultValue: defaultValue,
 					Comments:     descriptionToComments(propSchema.Description),
@@ -156,6 +162,7 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 			defs.Messages = append(defs.Messages, message)
 		}
 	}
+	return nil
 }
 
 func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
@@ -172,10 +179,8 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
-		// 定义一个固定的 HTTP 方法处理顺序，以保证确定性
 		httpMethods := []string{"get", "put", "post", "delete", "patch"}
 
-		// 按照固定顺序遍历 HTTP 方法
 		for _, httpMethod := range httpMethods {
 			op := operations[httpMethod]
 			if op == nil {
@@ -183,7 +188,6 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			}
 
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
-			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV3(op.Responses, baseFuncName)
 			if returnType.IsPrimitive {
 				continue
@@ -204,7 +208,6 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 			}
 
 			funcName := c.disambiguateFunctionName(baseFuncName, path, servicePtr)
-
 			params, throws := c.processParamsAndBodyV3(op.Parameters, op.RequestBody, op.Responses, reqName)
 			function := idl_ast.Function{
 				Name:               funcName,
@@ -218,16 +221,14 @@ func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 				}},
 			}
 
-			// 无论参数是否为空，都创建 Request 结构体
 			reqStruct := idl_ast.Message{
 				Name:               reqName,
 				Type:               "struct",
 				FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
-				Fields:             params, // 如果 params 为空，这里就是空 struct
+				Fields:             params,
 			}
 			c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
 
-			// 并且总是为函数添加参数
 			function.Parameters = []idl_ast.Field{
 				{ID: 1, Name: "request", Type: idl_ast.Type{Name: reqName}},
 			}
@@ -252,10 +253,8 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			"delete": pathItem.Delete, "patch": pathItem.Patch,
 		}
 
-		// 定义一个固定的 HTTP 方法处理顺序，以保证确定性
 		httpMethods := []string{"get", "put", "post", "delete", "patch"}
 
-		// 按照固定顺序遍历 HTTP 方法
 		for _, httpMethod := range httpMethods {
 			op := operations[httpMethod]
 			if op == nil {
@@ -263,7 +262,6 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 			}
 
 			_, baseFuncName, _ := c.getServiceAndFuncNames(op.Tags, op.OperationID, httpMethod, path, "")
-			// 强制生成 Response 类型，即使没有 schema
 			returnType := c.findBestReturnTypeV2(op.Responses, baseFuncName)
 			if returnType.IsPrimitive {
 				continue
@@ -298,16 +296,14 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 				}},
 			}
 
-			// 无论参数是否为空，都创建 Request 结构体
 			reqStruct := idl_ast.Message{
 				Name:               reqName,
 				Type:               "struct",
 				FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), reqName),
-				Fields:             params, // 如果 params 为空，这里就是空 struct
+				Fields:             params,
 			}
 			c.requestStructs[reqName] = append(c.requestStructs[reqName], reqStruct)
 
-			// 并且总是为函数添加参数
 			function.Parameters = []idl_ast.Field{
 				{ID: 1, Name: "req", Type: idl_ast.Type{Name: reqName}},
 			}
@@ -317,6 +313,7 @@ func (c *Converter) processPathsV2(paths map[string]*SwaggerPathItem) error {
 	}
 	return nil
 }
+
 func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *RequestBody, responses map[string]*Response, parentName string) ([]idl_ast.Field, []idl_ast.Field) {
 	var astThrows []idl_ast.Field
 	for code, resp := range responses {
@@ -338,7 +335,8 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 	currentNamespace := "main"
 
 	for _, param := range params {
-		if existingField, ok := paramFields[param.Name]; ok {
+		sanitizedName := sanitizeFieldName(param.Name)
+		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				existingField.Annotations = append(existingField.Annotations, *annotation)
 			}
@@ -351,7 +349,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				required = "required"
 			}
 			field := &idl_ast.Field{
-				Name:     param.Name,
+				Name:     sanitizedName,
 				Type:     *c.convertSchemaToType(param.Schema, currentNamespace, parentName, param.Name),
 				Required: required,
 				Comments: descriptionToComments(param.Description),
@@ -359,7 +357,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				field.Annotations = append(field.Annotations, *annotation)
 			}
-			paramFields[param.Name] = field
+			paramFields[sanitizedName] = field
 		}
 	}
 
@@ -369,8 +367,9 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				for propName, propSchema := range mediaType.Schema.Properties {
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
+					sanitizedPropName := sanitizeFieldName(propName)
 					field := &idl_ast.Field{
-						Name:     propName,
+						Name:     sanitizedPropName,
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 						Required: required,
 						Comments: descriptionToComments(propSchema.Description),
@@ -378,7 +377,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 					if annotation := createParameterAnnotation("body", propName); annotation != nil {
 						field.Annotations = append(field.Annotations, *annotation)
 					}
-					paramFields[propName] = field
+					paramFields[sanitizedPropName] = field
 				}
 			} else {
 				required := "optional"
@@ -446,8 +445,9 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if requiredMap[propName] {
 					required = "required"
 				}
+				sanitizedPropName := sanitizeFieldName(propName)
 				field := &idl_ast.Field{
-					Name:     propName,
+					Name:     sanitizedPropName,
 					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 					Required: required,
 					Comments: descriptionToComments(propSchema.Description),
@@ -455,13 +455,13 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if annotation := createParameterAnnotation("body", propName); annotation != nil {
 					field.Annotations = append(field.Annotations, *annotation)
 				}
-				paramFields[propName] = field
+				paramFields[sanitizedPropName] = field
 			}
 			continue
 		}
 
 		// MODIFICATION: Sanitize field name
-		sanitizedName := toLowerCamelCase(param.Name)
+		sanitizedName := sanitizeFieldName(param.Name)
 
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
