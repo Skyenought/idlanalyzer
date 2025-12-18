@@ -128,13 +128,14 @@ type canonicalDef struct {
 }
 
 type Converter struct {
-	filePath        string
-	spec            any
-	fileDefinitions map[string]*idl_ast.Definitions
-	requestStructs  map[string][]idl_ast.Message
-	cfg             *Config
-	definitionsMap  map[string]*Schema
-	canonicalDefs   map[string]canonicalDef
+	filePath         string
+	spec             any
+	fileDefinitions  map[string]*idl_ast.Definitions
+	requestStructs   map[string][]idl_ast.Message
+	cfg              *Config
+	definitionsMap   map[string]*Schema
+	canonicalDefs    map[string]canonicalDef
+	namespaceMapping map[string]string
 }
 
 func definitionsAreEqual(def1, def2 interface{}) bool {

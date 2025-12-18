@@ -11,8 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// convertInternal is the main entry point. It detects the spec version and converts it.
-// It now includes a fallback mechanism to handle specs missing a version field.
+// convertInternal is the main entry point.
 func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDLSchema, error) {
 	var genericSpec map[string]interface{}
 	if err := yaml.Unmarshal(content, &genericSpec); err != nil {
@@ -20,11 +19,12 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 	}
 
 	converter := &Converter{
-		filePath:        filePath,
-		fileDefinitions: make(map[string]*idl_ast.Definitions),
-		requestStructs:  make(map[string][]idl_ast.Message),
-		cfg:             cfg,
-		canonicalDefs:   make(map[string]canonicalDef),
+		filePath:         filePath,
+		fileDefinitions:  make(map[string]*idl_ast.Definitions),
+		requestStructs:   make(map[string][]idl_ast.Message),
+		cfg:              cfg,
+		canonicalDefs:    make(map[string]canonicalDef),
+		namespaceMapping: make(map[string]string), // Initialize
 	}
 
 	if swaggerVersion, ok := genericSpec["swagger"].(string); ok && strings.HasPrefix(swaggerVersion, "2.") {
@@ -45,16 +45,12 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		return converter.convertV3()
 	}
 
-
 	if _, hasPaths := genericSpec["paths"]; !hasPaths {
-		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field, and no 'paths' field found to indicate a spec file")
+		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field")
 	}
-
 
 	_, hasComponents := genericSpec["components"]
 	_, hasDefinitions := genericSpec["definitions"]
-
-	// 优先猜测为 OpenAPI v3 (更现代)
 
 	if hasComponents {
 		var spec OpenAPISpec
@@ -64,8 +60,6 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 	}
 
-
-	// 尝试猜测为 Swagger v2
 	if hasDefinitions {
 		var spec SwaggerSpec
 		if err := yaml.Unmarshal(content, &spec); err == nil {
@@ -74,13 +68,15 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 	}
 
-	return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field; fallback attempts to parse as v2 or v3 based on structure also failed")
+	return nil, fmt.Errorf("unsupported or missing version field; fallback failed")
 }
 
 func (c *Converter) convertV3() (*idl_ast.IDLSchema, error) {
 	spec := c.spec.(*OpenAPISpec)
 	if spec.Components != nil {
 		c.definitionsMap = spec.Components.Schemas
+		// Analyze dependencies and build mapping
+		c.namespaceMapping = c.analyzeDependency(spec.Components.Schemas)
 	}
 	if err := c.processSchemas(spec.Components.Schemas); err != nil {
 		return nil, err
@@ -95,6 +91,9 @@ func (c *Converter) convertV3() (*idl_ast.IDLSchema, error) {
 func (c *Converter) convertV2() (*idl_ast.IDLSchema, error) {
 	spec := c.spec.(*SwaggerSpec)
 	c.definitionsMap = spec.Definitions
+	// Analyze dependencies and build mapping
+	c.namespaceMapping = c.analyzeDependency(spec.Definitions)
+
 	if err := c.processSchemas(spec.Definitions); err != nil {
 		return nil, err
 	}
@@ -185,6 +184,15 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 		groupedCurrentNs := getGroupedNamespace(currentFileNamespace, 2)
 		groupedRefNs := getGroupedNamespace(refNamespace, 2)
 
+		// === Modified Logic: Check for Namespace Mapping ===
+		if mapped, ok := c.namespaceMapping[groupedCurrentNs]; ok {
+			groupedCurrentNs = mapped
+		}
+		if mapped, ok := c.namespaceMapping[groupedRefNs]; ok {
+			groupedRefNs = mapped
+		}
+		// ===================================================
+
 		var finalName string
 		if refNamespace == "main" || groupedRefNs == groupedCurrentNs {
 			finalName = uniqueRefName
@@ -206,13 +214,21 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 
 		outputDirPrefix := c.getOutputDirPrefix()
 		targetFileName := ""
+
+		// === Modified Logic: Use Mapping for Target File Name ===
 		if currentFileNamespace == "main" {
 			targetFileName = c.getMainThriftFileName()
 		} else {
 			groupedNamespace := getGroupedNamespace(currentFileNamespace, 2)
+			// Apply mapping if exists
+			if mapped, ok := c.namespaceMapping[groupedNamespace]; ok {
+				groupedNamespace = mapped
+			}
 			sanitizedGroupedNamespace := strings.ReplaceAll(groupedNamespace, "-", "_")
 			targetFileName = filepath.Join(outputDirPrefix, sanitizedGroupedNamespace+".thrift")
 		}
+		// ========================================================
+
 		defs := c.getOrCreateDefs(targetFileName)
 
 		isNameTaken := func(name string) bool {
