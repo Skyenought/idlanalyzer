@@ -56,6 +56,13 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 			fileName = c.getMainThriftFileName()
 		} else {
 			groupedNamespace := getGroupedNamespace(namespace, 2)
+
+			// === Modified Logic: Apply Namespace Mapping for File Assignment ===
+			if mapped, ok := c.namespaceMapping[groupedNamespace]; ok {
+				groupedNamespace = mapped
+			}
+			// ===================================================================
+
 			sanitizedGroupedNamespace := strings.ReplaceAll(groupedNamespace, "-", "_")
 			fileName = filepath.Join(outputDir, sanitizedGroupedNamespace+".thrift")
 		}
@@ -164,6 +171,9 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 	}
 	return nil
 }
+
+// ... [The rest of the file (processPathsV3, processPathsV2, etc.) remains unchanged] ...
+// ... [Ensure you include the rest of the file from your original codebase] ...
 
 func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 	pathKeys := make([]string, 0, len(paths))
