@@ -9,6 +9,42 @@ import (
 	"github.com/Skyenought/idlanalyzer/idl_ast"
 )
 
+// isValidDefaultValue 检查生成的默认值是否与 Thrift 类型兼容
+// 主要用于防止如 string 类型被赋予 int 默认值 (1: string s = 1) 导致的语法错误
+func isValidDefaultValue(t idl_ast.Type, cv *idl_ast.ConstantValue) bool {
+	if cv == nil {
+		return true
+	}
+
+	// cv.Value 的类型由 convertValueToConstantValue 决定：
+	// string -> string (quoted)
+	// int/int64 -> int64
+	// float64 -> float64
+	// bool -> bool
+
+	switch t.Name {
+	case "string", "binary":
+		_, ok := cv.Value.(string)
+		return ok
+	case "bool":
+		_, ok := cv.Value.(bool)
+		return ok
+	case "i8", "byte", "i16", "i32", "i64":
+		_, ok := cv.Value.(int64)
+		return ok
+	case "double", "float":
+		switch cv.Value.(type) {
+		case float64, int64:
+			return true
+		default:
+			return false
+		}
+	}
+
+	// 对于非基础类型（如结构体、枚举、Typedef），不做严格校验，默认放行
+	return true
+}
+
 func (c *Converter) processComponentsV3(components *Components) {
 	if components != nil {
 		c.processSchemas(components.Schemas)
@@ -158,11 +194,21 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 				if requiredMap[propName] {
 					required = "required"
 				}
+
+				// --- CHANGED START: 校验默认值与类型的一致性 ---
+				targetType := *c.convertSchemaToType(propSchema, namespace, uniqueShortName, propName)
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
+
+				// 如果默认值与类型不匹配（例如 string 类型默认值为 1），则丢弃默认值
+				if !isValidDefaultValue(targetType, defaultValue) {
+					defaultValue = nil
+				}
+				// --- CHANGED END ---
+
 				field := idl_ast.Field{
 					ID:           fieldID,
 					Name:         c.safeIdentifier(propName), // 使用 safeIdentifier
-					Type:         *c.convertSchemaToType(propSchema, namespace, uniqueShortName, propName),
+					Type:         targetType,
 					Required:     required,
 					DefaultValue: defaultValue,
 					Comments:     descriptionToComments(propSchema.Description),
@@ -176,6 +222,7 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 	return nil
 }
 
+// ... (Rest of the file remains unchanged)
 func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 	pathKeys := make([]string, 0, len(paths))
 	for k := range paths {
@@ -346,7 +393,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 	currentNamespace := "main"
 
 	for _, param := range params {
-		sanitizedName := c.safeIdentifier(param.Name)
+		sanitizedName := c.safeIdentifier(param.Name) // 使用 safeIdentifier
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				existingField.Annotations = append(existingField.Annotations, *annotation)
@@ -378,7 +425,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				for propName, propSchema := range mediaType.Schema.Properties {
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
-					sanitizedPropName := c.safeIdentifier(propName)
+					sanitizedPropName := c.safeIdentifier(propName) // 使用 safeIdentifier
 					field := &idl_ast.Field{
 						Name:     sanitizedPropName,
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
@@ -456,7 +503,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if requiredMap[propName] {
 					required = "required"
 				}
-				sanitizedPropName := c.safeIdentifier(propName)
+				sanitizedPropName := c.safeIdentifier(propName) // 使用 safeIdentifier
 				field := &idl_ast.Field{
 					Name:     sanitizedPropName,
 					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
@@ -471,7 +518,8 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 			continue
 		}
 
-		sanitizedName := c.safeIdentifier(param.Name)
+		// MODIFICATION: Sanitize field name
+		sanitizedName := c.safeIdentifier(param.Name) // 使用 safeIdentifier
 
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
@@ -623,8 +671,13 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 		return idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
+	// --- 最终修复：智能解包并返回正确的引用 ---
+
+	// 1. 获取顶层响应的 Schema
 	responseSchema := bestResp.Schema
 
+	// 2. 如果顶层响应本身就是一个引用（例如 $ref: '#/definitions/api.ArchonMetaMetaSwagger'），
+	//    就解析这个引用，拿到它指向的真实 Schema 定义。
 	if responseSchema.Ref != "" {
 		resolved := c.resolveSchema(responseSchema.Ref)
 		if resolved != nil {
@@ -632,6 +685,7 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 		}
 	}
 
+	// 3. 检查解析后的 Schema 是否是一个包含 "data" 或 "Data" 字段的包装器。
 	if responseSchema.Type == "object" && responseSchema.Properties != nil {
 		var dataSchema *Schema
 		if dataProp, ok := responseSchema.Properties["Data"]; ok {
@@ -658,8 +712,7 @@ func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path
 	if c.cfg != nil && c.cfg.ServiceName != "" {
 		serviceName = c.cfg.ServiceName
 	}
-
-	serviceName = c.escape(serviceName)
+	serviceName = c.escape(serviceName) // 防御：服务名关键字冲突
 
 	service := idl_ast.Service{
 		Name:               serviceName,
@@ -667,8 +720,10 @@ func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path
 	}
 
 	funcName := getFunctionName(opID, httpMethod, path, responseTypeName)
-	funcName = c.escape(funcName)
+	funcName = c.escape(funcName) // 防御：函数名关键字冲突
+
 	reqName := funcName + "Request"
+	reqName = c.escape(reqName) // 防御：请求结构体关键字冲突
 
 	return service, funcName, reqName
 }
@@ -696,6 +751,7 @@ func (c *Converter) disambiguateFunctionName(baseFuncName, path string, service 
 		}
 	}
 
+	// 再次防御，虽然 baseFuncName 已经处理过，但加上 "For..." 后可能又凑巧撞上关键字
 	finalName = c.escape(finalName)
 
 	counter := 2
@@ -789,7 +845,8 @@ func getFunctionName(opID, method, path, responseTypeName string) string {
 func (c *Converter) createEmptyResponseStruct(baseFuncName string) idl_ast.Type {
 	// 将响应结构体的名称后缀从 "EmptyResponse" 改为 "Resp"
 	respName := baseFuncName + "Resp"
-	respName = c.escape(respName)
+	respName = c.escape(respName) // 防御
+
 	defs := c.getOrCreateDefs(c.getMainThriftFileName())
 
 	for _, msg := range defs.Messages {
