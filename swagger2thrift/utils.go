@@ -12,6 +12,26 @@ import (
 	"github.com/mozillazg/go-pinyin"
 )
 
+// thriftKeywords 定义了 Apache Thrift 的保留关键字
+var thriftKeywords = map[string]struct{}{
+	"bool": {}, "byte": {}, "i16": {}, "i32": {}, "i64": {}, "double": {}, "string": {}, "binary": {},
+	"map": {}, "list": {}, "set": {}, "void": {}, "oneway": {}, "service": {}, "extends": {},
+	"exception": {}, "throws": {}, "required": {}, "optional": {}, "true": {}, "false": {},
+	"const": {}, "struct": {}, "union": {}, "enum": {}, "typedef": {}, "namespace": {},
+	"include": {}, "cpp_type": {}, "python_type": {}, "java_type": {}, "php_type": {},
+	"xsd_all": {}, "xsd_optional": {}, "xsd_nillable": {}, "xsd_attrs": {}, "ruby_type": {},
+	"lua_type": {}, "perl_package": {}, "csharp_namespace": {},
+}
+
+// escapeIfKeyword checks if the name is a Thrift keyword and appends an underscore if it is.
+func escapeIfKeyword(name string) string {
+	lowerName := strings.ToLower(name)
+	if _, ok := thriftKeywords[lowerName]; ok {
+		return name + "_"
+	}
+	return name
+}
+
 // toPascalCase converts a string to PascalCase.
 func toPascalCase(s string) string {
 	var result strings.Builder
@@ -159,6 +179,20 @@ func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 func (c *Converter) getOutputDirPrefix() string {
 	base := filepath.Base(c.filePath)
 	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+// escape returns the name with an underscore appended if it is a keyword and escaping is enabled.
+func (c *Converter) escape(name string) string {
+	if c.cfg != nil && c.cfg.EscapeKeywords {
+		return escapeIfKeyword(name)
+	}
+	return name
+}
+
+// safeIdentifier sanitizes a field/param name and checks for keywords
+func (c *Converter) safeIdentifier(name string) string {
+	sanitized := sanitizeFieldName(name)
+	return c.escape(sanitized)
 }
 
 func sanitizeFieldName(name string) string {

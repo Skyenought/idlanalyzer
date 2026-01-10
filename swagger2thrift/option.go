@@ -8,6 +8,10 @@ type Config struct {
 	// ServiceName specifies the name for the main aggregated service.
 	// If left empty, it defaults to "HTTPService".
 	ServiceName string
+	// EscapeKeywords determines whether to append an underscore to identifiers
+	// that match Thrift keywords (e.g., "struct", "list", "map").
+	// Defaults to true.
+	EscapeKeywords bool
 }
 
 // Option is a function that applies a configuration option to a Config object.
@@ -24,5 +28,13 @@ func WithNamespace(namespace string) Option {
 func WithServiceName(serviceName string) Option {
 	return func(c *Config) {
 		c.ServiceName = serviceName
+	}
+}
+
+// WithKeywordEscaping controls whether to escape Thrift keywords in identifiers.
+// Defaults to true.
+func WithKeywordEscaping(enabled bool) Option {
+	return func(c *Config) {
+		c.EscapeKeywords = enabled
 	}
 }

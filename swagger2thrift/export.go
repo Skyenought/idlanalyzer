@@ -25,7 +25,9 @@ func ConvertSpecsToThrift(specs map[string][]byte, options ...Option) (map[strin
 	}
 
 	// Apply options to our configuration
-	cfg := &Config{}
+	cfg := &Config{
+		EscapeKeywords: true,
+	}
 	for _, opt := range options {
 		opt(cfg)
 	}

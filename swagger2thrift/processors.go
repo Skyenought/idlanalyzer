@@ -49,6 +49,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 
 		namespace, originalShortName := splitDefinitionName(name)
 		uniqueShortName := createUniqueName(namespace, originalShortName)
+		// 防御：确保类型名不与关键字冲突
+		uniqueShortName = c.escape(uniqueShortName)
 
 		var fileName string
 		outputDir := c.getOutputDirPrefix()
@@ -102,6 +104,8 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 					}
 					memberName = fmt.Sprintf("%s_%s", toPascalCase(uniqueShortName), sanitizedValue)
 				}
+				// 防御：确保枚举成员名安全
+				memberName = c.escape(memberName)
 
 				intValue, ok := val.(int)
 				if !ok {
@@ -157,7 +161,7 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
 				field := idl_ast.Field{
 					ID:           fieldID,
-					Name:         sanitizeFieldName(propName),
+					Name:         c.safeIdentifier(propName), // 使用 safeIdentifier
 					Type:         *c.convertSchemaToType(propSchema, namespace, uniqueShortName, propName),
 					Required:     required,
 					DefaultValue: defaultValue,
@@ -171,9 +175,6 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) error {
 	}
 	return nil
 }
-
-// ... [The rest of the file (processPathsV3, processPathsV2, etc.) remains unchanged] ...
-// ... [Ensure you include the rest of the file from your original codebase] ...
 
 func (c *Converter) processPathsV3(paths map[string]*PathItem) error {
 	pathKeys := make([]string, 0, len(paths))
@@ -345,7 +346,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 	currentNamespace := "main"
 
 	for _, param := range params {
-		sanitizedName := sanitizeFieldName(param.Name)
+		sanitizedName := c.safeIdentifier(param.Name)
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				existingField.Annotations = append(existingField.Annotations, *annotation)
@@ -377,7 +378,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 				for propName, propSchema := range mediaType.Schema.Properties {
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
-					sanitizedPropName := sanitizeFieldName(propName)
+					sanitizedPropName := c.safeIdentifier(propName)
 					field := &idl_ast.Field{
 						Name:     sanitizedPropName,
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
@@ -455,7 +456,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if requiredMap[propName] {
 					required = "required"
 				}
-				sanitizedPropName := sanitizeFieldName(propName)
+				sanitizedPropName := c.safeIdentifier(propName)
 				field := &idl_ast.Field{
 					Name:     sanitizedPropName,
 					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
@@ -470,8 +471,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 			continue
 		}
 
-		// MODIFICATION: Sanitize field name
-		sanitizedName := sanitizeFieldName(param.Name)
+		sanitizedName := c.safeIdentifier(param.Name)
 
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
@@ -623,13 +623,8 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 		return idl_ast.Type{Name: "void", IsPrimitive: true}
 	}
 
-	// --- 最终修复：智能解包并返回正确的引用 ---
-
-	// 1. 获取顶层响应的 Schema
 	responseSchema := bestResp.Schema
 
-	// 2. 如果顶层响应本身就是一个引用（例如 $ref: '#/definitions/api.ArchonMetaMetaSwagger'），
-	//    就解析这个引用，拿到它指向的真实 Schema 定义。
 	if responseSchema.Ref != "" {
 		resolved := c.resolveSchema(responseSchema.Ref)
 		if resolved != nil {
@@ -637,7 +632,6 @@ func (c *Converter) findBestReturnTypeV2(responses map[string]*SwaggerResponse, 
 		}
 	}
 
-	// 3. 检查解析后的 Schema 是否是一个包含 "data" 或 "Data" 字段的包装器。
 	if responseSchema.Type == "object" && responseSchema.Properties != nil {
 		var dataSchema *Schema
 		if dataProp, ok := responseSchema.Properties["Data"]; ok {
@@ -665,12 +659,15 @@ func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path
 		serviceName = c.cfg.ServiceName
 	}
 
+	serviceName = c.escape(serviceName)
+
 	service := idl_ast.Service{
 		Name:               serviceName,
 		FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), serviceName),
 	}
 
 	funcName := getFunctionName(opID, httpMethod, path, responseTypeName)
+	funcName = c.escape(funcName)
 	reqName := funcName + "Request"
 
 	return service, funcName, reqName
@@ -698,6 +695,8 @@ func (c *Converter) disambiguateFunctionName(baseFuncName, path string, service 
 			}
 		}
 	}
+
+	finalName = c.escape(finalName)
 
 	counter := 2
 	originalName := finalName
@@ -790,6 +789,7 @@ func getFunctionName(opID, method, path, responseTypeName string) string {
 func (c *Converter) createEmptyResponseStruct(baseFuncName string) idl_ast.Type {
 	// 将响应结构体的名称后缀从 "EmptyResponse" 改为 "Resp"
 	respName := baseFuncName + "Resp"
+	respName = c.escape(respName)
 	defs := c.getOrCreateDefs(c.getMainThriftFileName())
 
 	for _, msg := range defs.Messages {

@@ -180,7 +180,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 
 		refNamespace, originalShortName := splitDefinitionName(refFullName)
 		uniqueRefName := createUniqueName(refNamespace, originalShortName)
-
+		uniqueRefName = c.escape(uniqueRefName)
 		groupedCurrentNs := getGroupedNamespace(currentFileNamespace, 2)
 		groupedRefNs := getGroupedNamespace(refNamespace, 2)
 
@@ -211,6 +211,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 	if len(schema.AllOf) > 0 || (schema.Type == "object" && len(schema.Properties) > 0) {
 		baseName := sanitizeAndTransliterateName(toPascalCase(parentName) + toPascalCase(fieldName))
 		newStructName := baseName
+		newStructName = c.escape(newStructName)
 
 		outputDirPrefix := c.getOutputDirPrefix()
 		targetFileName := ""
@@ -227,7 +228,6 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 			sanitizedGroupedNamespace := strings.ReplaceAll(groupedNamespace, "-", "_")
 			targetFileName = filepath.Join(outputDirPrefix, sanitizedGroupedNamespace+".thrift")
 		}
-		// ========================================================
 
 		defs := c.getOrCreateDefs(targetFileName)
 
@@ -295,7 +295,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 			}
 			field := idl_ast.Field{
 				ID:       i + 1,
-				Name:     sanitizeFieldName(propName),
+				Name:     c.safeIdentifier(propName),
 				Type:     *c.convertSchemaToType(propSchema, currentFileNamespace, newStructName, propName),
 				Required: required,
 				Comments: descriptionToComments(propSchema.Description),
