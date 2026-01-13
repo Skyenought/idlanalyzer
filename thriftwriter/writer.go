@@ -8,8 +8,24 @@ import (
 	"github.com/Skyenought/idlanalyzer/idl_ast"
 )
 
+// thriftKeywords 包含了 Thrift IDL 的保留关键字。
+var thriftKeywords = map[string]bool{
+	"namespace": true, "include": true, "void": true, "bool": true,
+	"byte": true, "i8": true, "i16": true, "i32": true, "i64": true,
+	"double": true, "string": true, "binary": true, "list": true,
+	"set": true, "map": true, "oneway": true, "typedef": true,
+	"struct": true, "union": true, "exception": true, "extends": true,
+	"throws": true, "service": true, "enum": true, "const": true,
+	"required": true, "optional": true, "true": true, "false": true,
+	"cpp_include": true, "php_namespace": true, "xsd_all": true,
+	"xsd_attrs": true, "xsd_doc": true, "xsd_nillable": true,
+	"xsd_optional": true, "xsd_namespace": true, "senum": true,
+}
+
 type Options struct {
-	NoComments bool
+	NoComments     bool
+	EscapeKeywords bool // 是否自动转义与关键字冲突的名称（默认开启）
+	ValidateTypes  bool // 是否校验默认值类型与字段类型是否匹配（默认开启）
 }
 
 type Option func(o *Options)
@@ -20,12 +36,31 @@ func WithNoComments(noComments bool) Option {
 	}
 }
 
+// WithKeywordEscaping 控制是否开启关键字转义。
+// 如果开启，当字段名或变量名与 Thrift 关键字相同时，会自动在后面追加 "_"。
+func WithKeywordEscaping(enable bool) Option {
+	return func(o *Options) {
+		o.EscapeKeywords = enable
+	}
+}
+
+// WithTypeValidation 控制是否开启类型校验。
+// 如果开启，当字段的默认值类型与字段声明类型明显不符时（如 string 类型默认值为 int），
+// 将自动移除该默认值。
+func WithTypeValidation(enable bool) Option {
+	return func(o *Options) {
+		o.ValidateTypes = enable
+	}
+}
+
 func Generate(schema *idl_ast.IDLSchema, opts ...Option) (map[string][]byte, error) {
 	if schema == nil {
 		return nil, fmt.Errorf("input schema cannot be nil")
 	}
 	options := &Options{
-		NoComments: false,
+		NoComments:     false,
+		EscapeKeywords: true, // 默认开启
+		ValidateTypes:  true, // 默认开启
 	}
 	for _, opt := range opts {
 		opt(options)
@@ -50,6 +85,108 @@ type thriftWriter struct {
 	indentStr        string
 	opts             *Options
 	includeBasenames map[string]struct{}
+}
+
+// sanitize 检查名称是否与关键字冲突，如果冲突且选项开启，则添加下划线
+func (w *thriftWriter) sanitize(name string) string {
+	if !w.opts.EscapeKeywords {
+		return name
+	}
+	if thriftKeywords[name] {
+		return name + "_"
+	}
+	return name
+}
+
+// checkTypeMatch 检查常量值 cv 是否与类型 t 兼容。
+// 如果不兼容（例如 t 是 string 但 cv 是 int），返回 false。
+func (w *thriftWriter) checkTypeMatch(t *idl_ast.Type, cv *idl_ast.ConstantValue) bool {
+	if !w.opts.ValidateTypes {
+		return true
+	}
+	if t == nil || cv == nil || cv.Value == nil {
+		return true
+	}
+
+	switch v := cv.Value.(type) {
+	case string:
+		// 检查是否是字符串字面量（带引号）
+		isQuoted := (strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`)) ||
+			(strings.HasPrefix(v, `'`) && strings.HasSuffix(v, `'`))
+
+		if !isQuoted {
+			// 如果没有引号，通常是标识符（引用常量），我们无法轻易判断其类型，默认允许
+			return true
+		}
+
+		// 如果是字面量字符串，目标类型必须是 string 或 binary
+		if t.Name == "string" || t.Name == "binary" {
+			return true
+		}
+
+		// 如果目标类型是基础非字符串类型，则肯定不匹配
+		switch t.Name {
+		case "bool", "byte", "i8", "i16", "i32", "i64", "double", "list", "set", "map", "void":
+			return false
+		}
+		// 对于自定义类型（如 typedef string MyStr），我们在没有符号表的情况下采取保守策略：允许
+		return true
+
+	case int64:
+		// 整数值可以赋给整数类型、double、以及可能的枚举（自定义类型）
+		// 如果目标类型是明确的非数字类型，则拒绝
+		switch t.Name {
+		case "string", "binary", "bool", "list", "set", "map", "void":
+			return false
+		}
+		return true
+
+	case float64:
+		// 浮点数通常只赋给 double
+		if t.Name == "double" {
+			return true
+		}
+		// 如果目标是 int 或 string 等，拒绝
+		switch t.Name {
+		case "byte", "i8", "i16", "i32", "i64", "string", "binary", "bool", "list", "set", "map", "void":
+			return false
+		}
+		// 自定义类型保守允许
+		return true
+
+	case bool:
+		if t.Name == "bool" {
+			return true
+		}
+		switch t.Name {
+		case "string", "binary", "byte", "i8", "i16", "i32", "i64", "double", "list", "set", "map", "void":
+			return false
+		}
+		return true
+
+	case []*idl_ast.ConstantValue:
+		if t.Name == "list" || t.Name == "set" {
+			return true
+		}
+		switch t.Name {
+		case "string", "binary", "bool", "byte", "i8", "i16", "i32", "i64", "double", "map", "void":
+			return false
+		}
+		return true
+
+	case []*idl_ast.ConstantMapEntry:
+		if t.Name == "map" {
+			return true
+		}
+		// Struct 常量也使用 Map 语法，所以如果是自定义类型，允许 Map 结构
+		switch t.Name {
+		case "string", "binary", "bool", "byte", "i8", "i16", "i32", "i64", "double", "list", "set", "void":
+			return false
+		}
+		return true
+	}
+
+	return true
 }
 
 func (w *thriftWriter) writeFileContent(file *idl_ast.File) {
@@ -205,20 +342,23 @@ func (w *thriftWriter) writeDefinitions(defs *idl_ast.Definitions) {
 func (w *thriftWriter) writeConstant(c *idl_ast.Constant) {
 	w.writeComments(c.Comments, false)
 	typeStr := w.formatType(&c.Type)
-	line := fmt.Sprintf("const %s %s = %s%s", typeStr, c.Name, c.Value, w.formatAnnotations(c.Annotations))
+	name := w.sanitize(c.Name)
+	line := fmt.Sprintf("const %s %s = %s%s", typeStr, name, c.Value, w.formatAnnotations(c.Annotations))
 	w.writeLine(line)
 }
 
 func (w *thriftWriter) writeTypedef(td *idl_ast.Typedef) {
 	w.writeComments(td.Comments, false)
 	typeStr := w.formatType(&td.Type)
-	line := fmt.Sprintf("typedef %s %s%s", typeStr, td.Alias, w.formatAnnotations(td.Annotations))
+	alias := w.sanitize(td.Alias)
+	line := fmt.Sprintf("typedef %s %s%s", typeStr, alias, w.formatAnnotations(td.Annotations))
 	w.writeLine(line)
 }
 
 func (w *thriftWriter) writeEnum(e *idl_ast.Enum) {
 	w.writeComments(e.Comments, false)
-	line := fmt.Sprintf("enum %s%s {", e.Name, w.formatAnnotations(e.Annotations))
+	name := w.sanitize(e.Name)
+	line := fmt.Sprintf("enum %s%s {", name, w.formatAnnotations(e.Annotations))
 	w.writeLine(line)
 	w.indent()
 	for i, val := range e.Values {
@@ -230,7 +370,8 @@ func (w *thriftWriter) writeEnum(e *idl_ast.Enum) {
 
 func (w *thriftWriter) writeEnumValue(val *idl_ast.EnumValue, needsComma bool) {
 	w.writeComments(val.Comments, true)
-	line := fmt.Sprintf("%s = %d%s", val.Name, val.Value, w.formatAnnotations(val.Annotations))
+	name := w.sanitize(val.Name)
+	line := fmt.Sprintf("%s = %d%s", name, val.Value, w.formatAnnotations(val.Annotations))
 	if needsComma {
 		line += ","
 	}
@@ -239,7 +380,8 @@ func (w *thriftWriter) writeEnumValue(val *idl_ast.EnumValue, needsComma bool) {
 
 func (w *thriftWriter) writeMessage(m *idl_ast.Message) {
 	w.writeComments(m.Comments, false)
-	header := fmt.Sprintf("%s %s%s {", m.Type, m.Name, w.formatAnnotations(m.Annotations))
+	name := w.sanitize(m.Name)
+	header := fmt.Sprintf("%s %s%s {", m.Type, name, w.formatAnnotations(m.Annotations))
 	w.writeLine(header)
 	w.indent()
 	for _, field := range m.Fields {
@@ -257,11 +399,16 @@ func (w *thriftWriter) writeField(f *idl_ast.Field, trailingSeparator bool) {
 		parts = append(parts, f.Required)
 	}
 	parts = append(parts, w.formatType(&f.Type))
-	parts = append(parts, f.Name)
+	parts = append(parts, w.sanitize(f.Name))
+
 	if f.DefaultValue != nil {
-		defaultValueStr := w.formatConstantValue(f.DefaultValue)
-		parts = append(parts, "=", defaultValueStr)
+		// 校验默认值类型
+		if w.checkTypeMatch(&f.Type, f.DefaultValue) {
+			defaultValueStr := w.formatConstantValue(f.DefaultValue)
+			parts = append(parts, "=", defaultValueStr)
+		}
 	}
+
 	line := strings.Join(parts, " ") + w.formatAnnotations(f.Annotations)
 	if trailingSeparator {
 		line += ","
@@ -271,7 +418,8 @@ func (w *thriftWriter) writeField(f *idl_ast.Field, trailingSeparator bool) {
 
 func (w *thriftWriter) writeService(s *idl_ast.Service) {
 	w.writeComments(s.Comments, false)
-	header := fmt.Sprintf("service %s", s.Name)
+	name := w.sanitize(s.Name)
+	header := fmt.Sprintf("service %s", name)
 	if s.Extends != "" {
 		header += fmt.Sprintf(" extends %s", s.Extends)
 	}
@@ -316,21 +464,32 @@ func (w *thriftWriter) formatFunction(f *idl_ast.Function) string {
 	if len(throwsParts) > 0 {
 		throwsStr = fmt.Sprintf(" throws (%s)", strings.Join(throwsParts, ", "))
 	}
-	return fmt.Sprintf("%s%s %s(%s)%s%s", onewayStr, returnTypeStr, f.Name, paramsStr, throwsStr, w.formatAnnotations(f.Annotations))
+	funcName := w.sanitize(f.Name)
+	return fmt.Sprintf("%s%s %s(%s)%s%s", onewayStr, returnTypeStr, funcName, paramsStr, throwsStr, w.formatAnnotations(f.Annotations))
 }
 
 func (w *thriftWriter) formatParamField(f *idl_ast.Field) string {
 	var parts []string
 	parts = append(parts, fmt.Sprintf("%d:", f.ID))
-	paramName := f.Name
+
+	// 1. Sanitize against keywords
+	paramName := w.sanitize(f.Name)
+
+	// 2. Check for collision with imports
 	if _, ok := w.includeBasenames[paramName]; ok {
 		paramName += "_"
 	}
+
 	parts = append(parts, w.formatType(&f.Type))
 	parts = append(parts, paramName)
+
 	if f.DefaultValue != nil {
-		parts = append(parts, "=", w.formatConstantValue(f.DefaultValue))
+		// 校验默认值类型
+		if w.checkTypeMatch(&f.Type, f.DefaultValue) {
+			parts = append(parts, "=", w.formatConstantValue(f.DefaultValue))
+		}
 	}
+
 	return strings.Join(parts, " ") + w.formatAnnotations(f.Annotations)
 }
 
