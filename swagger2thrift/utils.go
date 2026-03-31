@@ -158,7 +158,7 @@ func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 
 // toLowerCamelCase converts a string to lowerCamelCase.
 func toLowerCamelCase(s string) string {
-	pascal := toPascalCase(s)
+	pascal := sanitizeAndTransliterateName(s)
 	if pascal == "" {
 		return ""
 	}

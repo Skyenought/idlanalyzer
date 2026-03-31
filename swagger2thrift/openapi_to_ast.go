@@ -295,7 +295,7 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 			}
 			field := idl_ast.Field{
 				ID:       i + 1,
-				Name:     propName,
+				Name:     toLowerCamelCase(propName),
 				Type:     *c.convertSchemaToType(propSchema, currentFileNamespace, newStructName, propName),
 				Required: required,
 				Comments: descriptionToComments(propSchema.Description),

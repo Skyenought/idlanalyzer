@@ -144,7 +144,7 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
 				field := idl_ast.Field{
 					ID:           fieldID,
-					Name:         propName,
+					Name:         toLowerCamelCase(propName),
 					Type:         *c.convertSchemaToType(propSchema, namespace, shortName, propName),
 					Required:     required,
 					DefaultValue: defaultValue,
@@ -370,7 +370,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
 					field := &idl_ast.Field{
-						Name:     propName,
+						Name:     toLowerCamelCase(propName),
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 						Required: required,
 						Comments: descriptionToComments(propSchema.Description),
@@ -447,7 +447,7 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 					required = "required"
 				}
 				field := &idl_ast.Field{
-					Name:     propName,
+					Name:     toLowerCamelCase(propName),
 					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 					Required: required,
 					Comments: descriptionToComments(propSchema.Description),
