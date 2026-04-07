@@ -660,7 +660,14 @@ func (c *Converter) getServiceAndFuncNames(tags []string, opID, httpMethod, path
 		FullyQualifiedName: fmt.Sprintf("%s#%s", c.getMainThriftFileName(), serviceName),
 	}
 
-	funcName := getFunctionName(opID, httpMethod, path, responseTypeName)
+	var funcName string
+	// 如果配置了优先使用 operationID 且 opID 确实存在，则使用它；否则回退到基于路径和 HTTP 方法的默认生成方式
+	if c.cfg != nil && c.cfg.UseOperationID && opID != "" {
+		funcName = sanitizeAndTransliterateName(opID)
+	} else {
+		funcName = getFunctionName(opID, httpMethod, path, responseTypeName)
+	}
+
 	reqName := funcName + "Request"
 
 	return service, funcName, reqName

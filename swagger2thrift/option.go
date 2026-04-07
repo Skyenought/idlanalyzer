@@ -8,6 +8,9 @@ type Config struct {
 	// ServiceName specifies the name for the main aggregated service.
 	// If left empty, it defaults to "HTTPService".
 	ServiceName string
+	// UseOperationID specifies whether to use the OpenAPI operationId as the
+	// generated Thrift method name when it is present.
+	UseOperationID bool
 }
 
 // Option is a function that applies a configuration option to a Config object.
@@ -24,5 +27,12 @@ func WithNamespace(namespace string) Option {
 func WithServiceName(serviceName string) Option {
 	return func(c *Config) {
 		c.ServiceName = serviceName
+	}
+}
+
+// WithUseOperationID sets whether to use the operationId for method names.
+func WithUseOperationID(use bool) Option {
+	return func(c *Config) {
+		c.UseOperationID = use
 	}
 }
