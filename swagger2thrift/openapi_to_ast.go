@@ -11,8 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// convertInternal is the main entry point. It detects the spec version and converts it.
-// It now includes a fallback mechanism to handle specs missing a version field.
+// convertInternal is the main entry point.
 func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDLSchema, error) {
 	var genericSpec map[string]interface{}
 	if err := yaml.Unmarshal(content, &genericSpec); err != nil {
@@ -20,10 +19,12 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 	}
 
 	converter := &Converter{
-		filePath:        filePath,
-		fileDefinitions: make(map[string]*idl_ast.Definitions),
-		requestStructs:  make(map[string][]idl_ast.Message),
-		cfg:             cfg,
+		filePath:         filePath,
+		fileDefinitions:  make(map[string]*idl_ast.Definitions),
+		requestStructs:   make(map[string][]idl_ast.Message),
+		cfg:              cfg,
+		canonicalDefs:    make(map[string]canonicalDef),
+		namespaceMapping: make(map[string]string), // Initialize
 	}
 
 	if swaggerVersion, ok := genericSpec["swagger"].(string); ok && strings.HasPrefix(swaggerVersion, "2.") {
@@ -44,16 +45,13 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		return converter.convertV3()
 	}
 
-	// 2. 进入兜底机制：如果版本字段缺失
 	if _, hasPaths := genericSpec["paths"]; !hasPaths {
-		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field, and no 'paths' field found to indicate a spec file")
+		return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field")
 	}
 
-	// 3. 根据结构特征猜测版本
 	_, hasComponents := genericSpec["components"]
 	_, hasDefinitions := genericSpec["definitions"]
 
-	// 优先猜测为 OpenAPI v3 (更现代)
 	if hasComponents {
 		var spec OpenAPISpec
 		if err := yaml.Unmarshal(content, &spec); err == nil {
@@ -62,7 +60,6 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 	}
 
-	// 尝试猜测为 Swagger v2
 	if hasDefinitions {
 		var spec SwaggerSpec
 		if err := yaml.Unmarshal(content, &spec); err == nil {
@@ -71,16 +68,19 @@ func convertInternal(filePath string, content []byte, cfg *Config) (*idl_ast.IDL
 		}
 	}
 
-	return nil, fmt.Errorf("unsupported or missing 'swagger'/'openapi' version field; fallback attempts to parse as v2 or v3 based on structure also failed")
+	return nil, fmt.Errorf("unsupported or missing version field; fallback failed")
 }
 
-// convertV3 handles the conversion of an OpenAPI 3.0 spec.
 func (c *Converter) convertV3() (*idl_ast.IDLSchema, error) {
 	spec := c.spec.(*OpenAPISpec)
 	if spec.Components != nil {
 		c.definitionsMap = spec.Components.Schemas
+		// Analyze dependencies and build mapping
+		c.namespaceMapping = c.analyzeDependency(spec.Components.Schemas)
 	}
-	c.processComponentsV3(spec.Components)
+	if err := c.processSchemas(spec.Components.Schemas); err != nil {
+		return nil, err
+	}
 	if err := c.processPathsV3(spec.Paths); err != nil {
 		return nil, err
 	}
@@ -88,11 +88,15 @@ func (c *Converter) convertV3() (*idl_ast.IDLSchema, error) {
 	return c.assembleSchema("openapi", spec.OpenAPI), nil
 }
 
-// convertV2 handles the conversion of a Swagger 2.0 spec.
 func (c *Converter) convertV2() (*idl_ast.IDLSchema, error) {
 	spec := c.spec.(*SwaggerSpec)
 	c.definitionsMap = spec.Definitions
-	c.processDefinitionsV2(spec.Definitions)
+	// Analyze dependencies and build mapping
+	c.namespaceMapping = c.analyzeDependency(spec.Definitions)
+
+	if err := c.processSchemas(spec.Definitions); err != nil {
+		return nil, err
+	}
 	if err := c.processPathsV2(spec.Paths); err != nil {
 		return nil, err
 	}
@@ -100,10 +104,8 @@ func (c *Converter) convertV2() (*idl_ast.IDLSchema, error) {
 	return c.assembleSchema("thrift", spec.Swagger), nil
 }
 
-// resolveSchema follows a $ref string to its definition.
 func (c *Converter) resolveSchema(ref string) *Schema {
 	if !strings.HasPrefix(ref, "#/definitions/") {
-		// Basic support for components, extend as needed
 		ref = strings.Replace(ref, "#/components/schemas/", "#/definitions/", 1)
 	}
 
@@ -113,10 +115,9 @@ func (c *Converter) resolveSchema(ref string) *Schema {
 			return def
 		}
 	}
-	return nil // Or return an error
+	return nil
 }
 
-// flattenAllOf merges a list of schemas from an allOf directive into a single schema.
 func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	finalSchema := &Schema{
 		Properties: make(map[string]*Schema),
@@ -124,7 +125,6 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 	requiredSet := make(map[string]bool)
 
 	for _, s := range schemas {
-		// Resolve schema if it's a reference
 		resolvedSchema := s
 		if s.Ref != "" {
 			resolved := c.resolveSchema(s.Ref)
@@ -133,16 +133,13 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 			}
 		}
 
-		// Recursively flatten if the resolved schema also has allOf
 		if len(resolvedSchema.AllOf) > 0 {
 			resolvedSchema = c.flattenAllOf(resolvedSchema.AllOf)
 		}
 
-		// Merge properties
 		for key, prop := range resolvedSchema.Properties {
 			finalSchema.Properties[key] = prop
 		}
-		// Merge required fields
 		for _, req := range resolvedSchema.Required {
 			if !requiredSet[req] {
 				finalSchema.Required = append(finalSchema.Required, req)
@@ -152,7 +149,6 @@ func (c *Converter) flattenAllOf(schemas []*Schema) *Schema {
 		if finalSchema.Description == "" && resolvedSchema.Description != "" {
 			finalSchema.Description = resolvedSchema.Description
 		}
-
 	}
 	return finalSchema
 }
@@ -183,32 +179,26 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 		}
 
 		refNamespace, originalShortName := splitDefinitionName(refFullName)
-		shortName := sanitizeAndTransliterateName(originalShortName)
-		finalName := ""
+		uniqueRefName := createUniqueName(refNamespace, originalShortName)
 
-		outputDirPrefix := c.getOutputDirPrefix()
-		targetFileName := ""
-		if refNamespace == "main" {
-			targetFileName = c.getMainThriftFileName()
-		} else {
-			targetFileName = filepath.Join(outputDirPrefix, refNamespace+".thrift")
+		groupedCurrentNs := getGroupedNamespace(currentFileNamespace, 2)
+		groupedRefNs := getGroupedNamespace(refNamespace, 2)
+
+		// === Modified Logic: Check for Namespace Mapping ===
+		if mapped, ok := c.namespaceMapping[groupedCurrentNs]; ok {
+			groupedCurrentNs = mapped
 		}
-
-		currentFileName := ""
-		if currentFileNamespace == "main" {
-			currentFileName = c.getMainThriftFileName()
-		} else {
-			currentFileName = filepath.Join(outputDirPrefix, currentFileNamespace+".thrift")
+		if mapped, ok := c.namespaceMapping[groupedRefNs]; ok {
+			groupedRefNs = mapped
 		}
+		// ===================================================
 
-		if targetFileName == currentFileName {
-			finalName = shortName
+		var finalName string
+		if refNamespace == "main" || groupedRefNs == groupedCurrentNs {
+			finalName = uniqueRefName
 		} else {
-			if refNamespace != "main" {
-				finalName = refNamespace + "." + shortName
-			} else {
-				finalName = shortName
-			}
+			sanitizedGroupedRefNs := strings.ReplaceAll(groupedRefNs, "-", "_")
+			finalName = sanitizedGroupedRefNs + "." + uniqueRefName
 		}
 
 		return &idl_ast.Type{
@@ -224,11 +214,21 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 
 		outputDirPrefix := c.getOutputDirPrefix()
 		targetFileName := ""
+
+		// === Modified Logic: Use Mapping for Target File Name ===
 		if currentFileNamespace == "main" {
 			targetFileName = c.getMainThriftFileName()
 		} else {
-			targetFileName = filepath.Join(outputDirPrefix, currentFileNamespace+".thrift")
+			groupedNamespace := getGroupedNamespace(currentFileNamespace, 2)
+			// Apply mapping if exists
+			if mapped, ok := c.namespaceMapping[groupedNamespace]; ok {
+				groupedNamespace = mapped
+			}
+			sanitizedGroupedNamespace := strings.ReplaceAll(groupedNamespace, "-", "_")
+			targetFileName = filepath.Join(outputDirPrefix, sanitizedGroupedNamespace+".thrift")
 		}
+		// ========================================================
+
 		defs := c.getOrCreateDefs(targetFileName)
 
 		isNameTaken := func(name string) bool {

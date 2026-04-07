@@ -172,24 +172,34 @@ func (c *Converter) getOutputDirPrefix() string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-// sanitizeName removes consecutively repeated words from a PascalCase string.
-func sanitizeName(name string) string {
-	re := regexp.MustCompile(`([A-Z]+[a-z0-9]*)`)
-	parts := re.FindAllString(name, -1)
-	if len(parts) <= 1 {
-		return name
+func sanitizeFieldName(name string) string {
+	// 创建一个多字符替换器，以提高效率和可读性
+	replacer := strings.NewReplacer(
+		"-", "_",
+		".", "_",
+		"/", "_",
+	)
+	return replacer.Replace(name)
+}
+
+func getGroupedNamespace(namespace string, depth int) string {
+	parts := strings.Split(namespace, ".")
+	if len(parts) > depth {
+		return strings.Join(parts[:depth], ".")
+	}
+	return namespace
+}
+
+func createUniqueName(namespace, shortName string) string {
+	// Don't prefix 'main' namespace to keep primary type names clean.
+	if namespace == "main" {
+		return toPascalCase(shortName)
 	}
 
-	var cleanParts []string
-	if len(parts) > 0 {
-		cleanParts = append(cleanParts, parts[0])
-	}
+	// Sanitize and combine namespace and short name.
+	// This replaces '.', '-', etc., with PascalCase segments.
+	prefix := toPascalCase(namespace)
+	suffix := toPascalCase(shortName)
 
-	for i := 1; i < len(parts); i++ {
-		if parts[i] != parts[i-1] {
-			cleanParts = append(cleanParts, parts[i])
-		}
-	}
-
-	return strings.Join(cleanParts, "")
+	return prefix + suffix
 }
