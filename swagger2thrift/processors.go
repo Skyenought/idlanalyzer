@@ -132,9 +132,9 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 			for propName := range finalSchema.Properties {
 				propNames = append(propNames, propName)
 			}
-			sort.Strings(propNames)
 
 			fieldID := 1
+			usedNames := make(map[string]bool)
 			for _, propName := range propNames {
 				propSchema := finalSchema.Properties[propName]
 				required := "optional"
@@ -142,9 +142,19 @@ func (c *Converter) processSchemas(schemas map[string]*Schema) {
 					required = "required"
 				}
 				defaultValue, _ := c.convertValueToConstantValue(propSchema.Default)
+
+				fieldName := sanitizeFieldName(propName)
+				originalFieldName := fieldName
+				counter := 2
+				for usedNames[fieldName] {
+					fieldName = fmt.Sprintf("%s_%d", originalFieldName, counter)
+					counter++
+				}
+				usedNames[fieldName] = true
+
 				field := idl_ast.Field{
 					ID:           fieldID,
-					Name:         toLowerCamelCase(propName),
+					Name:         fieldName,
 					Type:         *c.convertSchemaToType(propSchema, namespace, shortName, propName),
 					Required:     required,
 					DefaultValue: defaultValue,
@@ -370,7 +380,7 @@ func (c *Converter) processParamsAndBodyV3(params []*Parameter, reqBody *Request
 					required := "optional"
 					// This is a simplified check for required. A full implementation would check reqBody.Schema.Required array.
 					field := &idl_ast.Field{
-						Name:     toLowerCamelCase(propName),
+						Name:     sanitizeFieldName(propName),
 						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
 						Required: required,
 						Comments: descriptionToComments(propSchema.Description),
@@ -446,22 +456,36 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				if requiredMap[propName] {
 					required = "required"
 				}
-				field := &idl_ast.Field{
-					Name:     toLowerCamelCase(propName),
-					Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
-					Required: required,
-					Comments: descriptionToComments(propSchema.Description),
+
+				fieldName := sanitizeFieldName(propName)
+				if fieldName == "" {
+					fieldName = "bodyField"
 				}
-				if annotation := createParameterAnnotation("body", propName); annotation != nil {
-					field.Annotations = append(field.Annotations, *annotation)
+
+				if existingField, ok := paramFields[fieldName]; ok {
+					if annotation := createParameterAnnotation("body", propName); annotation != nil {
+						existingField.Annotations = append(existingField.Annotations, *annotation)
+					}
+				} else {
+					field := &idl_ast.Field{
+						Name:     fieldName,
+						Type:     *c.convertSchemaToType(propSchema, currentNamespace, parentName, propName),
+						Required: required,
+						Comments: descriptionToComments(propSchema.Description),
+					}
+					if annotation := createParameterAnnotation("body", propName); annotation != nil {
+						field.Annotations = append(field.Annotations, *annotation)
+					}
+					paramFields[fieldName] = field
 				}
-				paramFields[propName] = field
 			}
 			continue
 		}
 
-		// MODIFICATION: Sanitize field name
-		sanitizedName := toLowerCamelCase(param.Name)
+		sanitizedName := sanitizeFieldName(param.Name)
+		if sanitizedName == "" {
+			sanitizedName = "param"
+		}
 
 		if existingField, ok := paramFields[sanitizedName]; ok {
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
@@ -479,7 +503,6 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 			if param.In == "body" {
 				paramType = *c.convertSchemaToType(param.Schema, currentNamespace, parentName, "")
 			} else {
-				// MODIFICATION: 组装一个完整的临时 Schema 对象以处理内联枚举
 				tempSchema := &Schema{
 					Type:          param.Type,
 					Format:        param.Format,
@@ -494,12 +517,11 @@ func (c *Converter) processParamsV2(params []*SwaggerParameter, responses map[st
 				paramType = *c.convertSchemaToType(tempSchema, currentNamespace, parentName, param.Name)
 			}
 			field := &idl_ast.Field{
-				Name:     sanitizedName, // Use sanitized name
+				Name:     sanitizedName,
 				Type:     paramType,
 				Required: required,
 				Comments: descriptionToComments(param.Description),
 			}
-			// Use original name for the annotation's value
 			if annotation := createParameterAnnotation(param.In, param.Name); annotation != nil {
 				field.Annotations = append(field.Annotations, *annotation)
 			}
