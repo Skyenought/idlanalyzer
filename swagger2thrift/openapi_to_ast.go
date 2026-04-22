@@ -287,15 +287,26 @@ func (c *Converter) convertSchemaToType(schema *Schema, currentFileNamespace, pa
 		}
 		sort.Strings(propNames)
 
+		usedNames := make(map[string]bool)
 		for i, propName := range propNames {
 			propSchema := finalSchema.Properties[propName]
 			required := "optional"
 			if requiredMap[propName] {
 				required = "required"
 			}
+
+			fieldName := sanitizeFieldName(propName)
+			originalFieldName := fieldName
+			counter := 2
+			for usedNames[fieldName] {
+				fieldName = fmt.Sprintf("%s_%d", originalFieldName, counter)
+				counter++
+			}
+			usedNames[fieldName] = true
+
 			field := idl_ast.Field{
 				ID:       i + 1,
-				Name:     toLowerCamelCase(propName),
+				Name:     fieldName,
 				Type:     *c.convertSchemaToType(propSchema, currentFileNamespace, newStructName, propName),
 				Required: required,
 				Comments: descriptionToComments(propSchema.Description),

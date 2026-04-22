@@ -156,14 +156,30 @@ func (c *Converter) getOrCreateDefs(filename string) *idl_ast.Definitions {
 	return c.fileDefinitions[filename]
 }
 
-// toLowerCamelCase converts a string to lowerCamelCase.
-func toLowerCamelCase(s string) string {
+// sanitizeFieldName converts a string into a valid Thrift field identifier,
+// preserving the original casing of the first character if possible.
+func sanitizeFieldName(s string) string {
 	pascal := sanitizeAndTransliterateName(s)
 	if pascal == "" {
 		return ""
 	}
+
+	var firstLetter rune
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			firstLetter = r
+			break
+		}
+	}
+
 	runes := []rune(pascal)
-	runes[0] = unicode.ToLower(runes[0])
+	if firstLetter != 0 && unicode.IsUpper(firstLetter) {
+		runes[0] = unicode.ToUpper(runes[0])
+	} else if firstLetter != 0 && unicode.IsLower(firstLetter) {
+		runes[0] = unicode.ToLower(runes[0])
+	} else {
+		runes[0] = unicode.ToLower(runes[0])
+	}
 	return string(runes)
 }
 
